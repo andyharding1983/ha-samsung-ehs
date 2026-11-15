@@ -165,11 +165,13 @@ SENSORS: tuple[EhsSensorDescription, ...] = (
     ),
     EhsSensorDescription(
         key="cop_today",
+        state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=2,
         value_fn=lambda c: c.energy.cop_today,
     ),
     EhsSensorDescription(
         key="scop",
+        state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=2,
         value_fn=lambda c: c.energy.cop_lifetime,
     ),
