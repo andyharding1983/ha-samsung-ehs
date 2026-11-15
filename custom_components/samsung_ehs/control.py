@@ -60,9 +60,24 @@ class AdaptiveOffset:
     rate: float = 0.5  # K offset per hour per K of room error
     limit: float = 5.0
 
-    def update(self, dt_s: float, room: float | None, target: float, learning: bool) -> float:
+    def update(
+        self,
+        dt_s: float,
+        room: float | None,
+        target: float,
+        learning: bool,
+        limited: int = 0,
+    ) -> float:
+        """Integrate room error.
+
+        `limited` is +1 when the flow is already held at its maximum and -1 at
+        its minimum; learning further in that direction would only wind up
+        an offset that later causes overshoot, so it is blocked.
+        """
         if learning and room is not None and self.rate > 0 and 0 < dt_s <= 3600:
             err = target - room
+            if (err > 0 and limited > 0) or (err < 0 and limited < 0):
+                return round(self.value, 2)
             self.value += self.rate * err * dt_s / 3600.0
             self.value = max(-self.limit, min(self.limit, self.value))
         return round(self.value, 2)

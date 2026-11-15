@@ -11,6 +11,7 @@ device, the IDs follow the new name.
 * [Sensors](#sensors)
 * [Binary sensors](#binary-sensors)
 * [Switches](#switches)
+* [Select: heat emitter type](#select-heat-emitter-type)
 * [Numbers: tuning](#numbers-tuning)
 * [Diagnostic entities](#diagnostic-entities)
 
@@ -31,7 +32,8 @@ device, the IDs follow the new name.
 On every poll (15 s by default) Home Assistant:
 
 1. **Reads** the unit.
-2. **Updates the adaptive offset** from the room error. This only happens while heating is running.
+2. **Updates the adaptive offset** from the room error. This only happens while space heating is actually running:
+   not paused, not defrosting and not heating the hot water cylinder.
 3. **Calculates the Flow target** from the curve, the adaptive offset and the room offset.
 4. **Runs the thermostat:** it pauses at *target + overshoot* and resumes at *target*, subject to the
    minimum on/off times.
@@ -96,6 +98,10 @@ Target range 5–28 °C in 0.5 °C steps. The mode and target are restored after
 
 `water_heater.samsung_ehs_hot_water`
 
+Only created when the **Hot water cylinder** option is on, which is the default. On heating-only systems,
+turn it off in the setup dialog or in *Configure*. The hot water entity and the hot water temperature sensor are
+then removed.
+
 Controls the domestic hot water cylinder directly on the unit. Home Assistant doesn't add any logic of its
 own here.
 
@@ -120,7 +126,7 @@ Target range 30–70 °C. The current temperature is the cylinder sensor.
 | `sensor.samsung_ehs_flow_temperature` | Water leaving the heat pump (°C) |
 | `sensor.samsung_ehs_return_temperature` | Water coming back from the heating circuit (°C) |
 | `sensor.samsung_ehs_flow_return_difference` | Flow − return (K). Typically 3–7 K while heating. It goes negative during defrost. |
-| `sensor.samsung_ehs_hot_water_temperature` | Hot water cylinder (°C) |
+| `sensor.samsung_ehs_hot_water_temperature` | Hot water cylinder (°C). Only when the hot water option is on. |
 | `sensor.samsung_ehs_outdoor_temperature` | Heat pump's outdoor sensor (°C). Needs *extended registers*. |
 | `sensor.samsung_ehs_flow_rate` | Water flow rate (L/min). Needs *extended registers*. 0 when the pump is stopped. |
 | `sensor.samsung_ehs_compressor_frequency` | Compressor speed (Hz). Needs *extended registers*. 0 = stopped. |
@@ -137,6 +143,7 @@ show how it was worked out:
 | `curve_flow` | Flow temperature from the heating curve alone at `effective_outdoor` (°C) |
 | `adaptive_offset` | Slow learned correction added to the curve (K) |
 | `room_offset` | Instant room correction = *Room influence gain* × (target − room), limited to ± *Room influence limit* (K) |
+| `limited` | `1` when the result is held at the maximum flow temperature, `-1` at the minimum, `0` otherwise. While it is held, the adaptive offset doesn't wind up further in that direction. |
 | `heating_needed` | `false` when `effective_outdoor` is at or above the *Heating cut-off*. Heating then stays off. |
 | `heat_demand` | `true` while the thermostat is calling for heat |
 | `last_write` | When a flow setpoint was last written to the unit (UTC). `null` since startup if nothing has been written yet. |
@@ -148,10 +155,14 @@ rounded to 0.5 °C. Above the cut-off it equals the minimum flow temperature.
 
 `sensor.samsung_ehs_adaptive_curve_offset` (K): a slow, self-learning shift of the whole heating curve.
 
-While space heating runs (and isn't defrosting), it changes by
-*Adaptive learning rate* × (target − room) per hour. The default 0.5 means 1 °C too cold for an hour adds
-0.5 K. It is limited to ± *Adaptive offset limit*. It doesn't learn while heating is paused or off, or while the
-room sensor is unavailable. The value is saved and survives restarts.
+While space heating runs (not defrosting and not diverted to the hot water cylinder), it changes by
+*Adaptive learning rate* × (target − room) per hour. The underfloor default of 0.25 means 1 °C too cold for an
+hour adds 0.25 K. It is limited to ± *Adaptive offset limit*. It doesn't learn while heating is paused or off,
+or while the room sensor is unavailable. The value is saved and survives restarts.
+
+**Anti-windup:** if the flow target is already held at the *maximum* flow temperature, the offset won't learn
+any further upwards. Raising it would change nothing now, and would only cause an overshoot once the weather
+warms up. The same applies downwards at the *minimum*. It can always learn back towards zero.
 
 It's useful for tuning. If it settles at, say, +2 K, your curve is about 2 °C too low. Raise both curve
 flow points by 2 °C and the offset will drift back towards 0.
@@ -193,6 +204,27 @@ heavily on the flow rate reading. Treat it as a guide, not as metrology.
 
 ---
 
+## Select: heat emitter type
+
+`select.samsung_ehs_heat_emitter_type` (Configuration)
+
+Choosing an emitter type applies a set of sensible starting values. You can then fine-tune each one
+with the numbers below. Choosing a type again re-applies its preset and overwrites your fine-tuning.
+
+| Setting | Underfloor heating (default) | Radiators |
+|---|---|---|
+| Minimum flow temperature | 25 °C | 30 °C |
+| Maximum flow temperature | 45 °C | 55 °C |
+| Curve: flow at design temperature (−3 °C) | 40 °C | 50 °C |
+| Curve: flow at mild temperature (15 °C) | 25 °C | 30 °C |
+| Adaptive learning rate | 0.25 | 0.75 |
+
+Underfloor heating in screed responds over hours and must not run too hot, because that damages the screed
+and floor coverings. Check your installer's maximum flow temperature, which is often 40–50 °C. Radiators
+respond in minutes and need higher flow temperatures.
+
+---
+
 ## Numbers: tuning
 
 All of these are under the device's **Configuration** section and are restored after a restart. Changing any
@@ -200,18 +232,22 @@ of them recalculates and, if heating is on, writes the new flow temperature stra
 
 ### Heating curve
 
-The curve is a straight line through two points, (design outdoor, design flow) and (mild outdoor, mild flow),
-and is held flat beyond the min/max flow temperature.
+The curve is a straight line through two points, (design outdoor, design flow) and (mild outdoor, mild flow).
+It **keeps going past those points**: with the underfloor defaults it asks for about 46 °C at −10 °C. The room
+and adaptive offsets are added on top. The **minimum and maximum flow temperatures are the hard limits on
+the final result**, whatever produced it. Set the maximum for what your heat emitters can safely take.
 
 | Entity | Default | Meaning |
 |---|---|---|
 | `number.samsung_ehs_curve_design_outdoor_temperature` | −3 °C | Coldest outdoor temperature you design for |
-| `number.samsung_ehs_curve_flow_at_design_temperature` | 45 °C | Flow temperature needed at that outdoor temperature |
+| `number.samsung_ehs_curve_flow_at_design_temperature` | 40 °C ¹ | Flow temperature needed at that outdoor temperature |
 | `number.samsung_ehs_curve_mild_outdoor_temperature` | 15 °C | A mild outdoor temperature |
-| `number.samsung_ehs_curve_flow_at_mild_temperature` | 25 °C | Flow temperature needed at that outdoor temperature |
-| `number.samsung_ehs_minimum_flow_temperature` | 20 °C | Lowest flow ever written. The unit's own limit is 15 °C. |
-| `number.samsung_ehs_maximum_flow_temperature` | 55 °C | Highest flow ever written. The unit's own limit is 55 °C. |
+| `number.samsung_ehs_curve_flow_at_mild_temperature` | 25 °C ¹ | Flow temperature needed at that outdoor temperature |
+| `number.samsung_ehs_minimum_flow_temperature` | 25 °C ¹ | Lowest flow ever written. It stops the flow sinking towards room temperature in mild weather, where it delivers almost no heat. The unit's own limit is 15 °C. |
+| `number.samsung_ehs_maximum_flow_temperature` | 45 °C ¹ | Highest flow ever written. A safety limit for your emitters. The unit's own limit is 55 °C. |
 | `number.samsung_ehs_heating_cut_off_outdoor_temperature` | 17 °C | At or above this *effective* outdoor temperature, heating stays off |
+
+¹ Underfloor default. Set by the [heat emitter type](#select-heat-emitter-type).
 
 ### Forecast
 
@@ -231,7 +267,7 @@ and is held flat beyond the min/max flow temperature.
 
 | Entity | Default | Meaning |
 |---|---|---|
-| `number.samsung_ehs_adaptive_learning_rate` | 0.5 | K per hour per K of room error. 0 turns learning off and holds the current offset. |
+| `number.samsung_ehs_adaptive_learning_rate` | 0.25 ¹ | K per hour per K of room error. 0 turns learning off and holds the current offset. |
 | `number.samsung_ehs_adaptive_offset_limit` | 5 K | Maximum learned offset either way |
 
 ### Thermostat

@@ -36,7 +36,8 @@ async def async_setup_entry(
     entry: EhsConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    async_add_entities([EhsWaterHeater(entry.runtime_data)])
+    if entry.runtime_data.hot_water:
+        async_add_entities([EhsWaterHeater(entry.runtime_data)])
 
 
 @temperature_compat(WaterHeaterEntity)

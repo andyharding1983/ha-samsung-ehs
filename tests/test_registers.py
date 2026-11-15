@@ -57,7 +57,7 @@ def test_decode_snapshot():
 
 def test_extended_layout_order():
     keys = [(a, v.key) for a, v in R.extended_layout()]
-    assert keys == [(5, "outdoor_temp"), (6, "compressor_freq"), (7, "flow_rate")]
+    assert keys == [(5, "outdoor_temp"), (6, "compressor_freq"), (7, "flow_rate"), (8, "dhw_valve")]
 
 
 def test_short_read_rejected():

@@ -101,6 +101,8 @@ EXT_OUTDOOR: tuple[ExtendedValue, ...] = (
 )
 EXT_INDOOR: tuple[ExtendedValue, ...] = (
     ExtendedValue("flow_rate", 0x42E9, 0.1, signed=False),
+    # 3-way valve: 0 = space heating, 1 = hot water (community-documented)
+    ExtendedValue("dhw_valve", 0x4067, 1.0, signed=False),
 )
 
 
@@ -168,6 +170,11 @@ class EhsData:
     quiet: bool = False
     away: bool = False
     extended: dict[str, float] | None = None
+
+    @property
+    def dhw_active(self) -> bool:
+        """True while the 3-way valve is diverting heat to the cylinder."""
+        return bool((self.extended or {}).get("dhw_valve"))
 
     @property
     def delta_t(self) -> float | None:

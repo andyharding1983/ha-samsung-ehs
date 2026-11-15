@@ -14,10 +14,11 @@ No cloud, no SmartThings.
 | Platform | Entities |
 |---|---|
 | Climate | Room thermostat: Heat/Off and room target temperature |
-| Water heater | Hot water on/off, Eco / Standard / Power / Force, tank target |
+| Water heater | Hot water on/off, Eco / Standard / Power / Force, tank target (optional, for heating-only systems) |
 | Sensor | Flow, return, ΔT, hot water tank, outdoor temp, flow rate, compressor frequency, heat output, COP (instant / today / lifetime), heat energy, flow target, adaptive curve offset, error codes |
 | Binary sensor | Heat demand, defrost, compressor running, problem |
 | Switch | Quiet mode, away mode |
+| Select | Heat emitter type: underfloor or radiators, which applies sensible presets |
 | Number | Heating curve, thermostat and adaptive tuning |
 
 📖 **[Full entity reference](docs/entities.md)**: every entity, attribute and setting explained, including
@@ -46,6 +47,7 @@ Then open **Configure** on the integration to set:
 
 | Option | Used for |
 |---|---|
+| Hot water cylinder | Turn off on heating-only systems to hide all hot water controls |
 | Room temperature sensor | Room influence (falls back to the Samsung controller's sensor) |
 | Heat pump electrical power sensor | COP (W or kW, ideally a dedicated meter on the outdoor unit supply) |
 | Weather forecast | Forecast blending for weather compensation |
@@ -79,10 +81,13 @@ flow_setpoint     = clamp(curve_flow + adaptive_offset + room_offset, min flow, 
   spell. This matters for slow systems such as underfloor heating. Set the weight to `0` to disable it.
 * **Room influence** reacts straight away to the room error. A gain of 3 means 1 °C below target
   raises the flow by 3 °C.
-* The **adaptive offset** learns slowly. While the heat pump runs, it integrates the room error
-  (default 0.5 K per hour per K of error, limited to ±5 K) and shifts the whole curve, so the room
-  settles on target rather than just short of it. It survives restarts. Once it's stable, you can
-  fold it into the curve points.
+* The **adaptive offset** learns slowly. While space heating runs (not during defrost or hot water), it
+  integrates the room error and shifts the whole curve, so the room settles on target rather than just
+  short of it. It won't wind up while the flow is already held at its min/max. It survives restarts.
+  Once it's stable, you can fold it into the curve points.
+* **Min/max flow temperature** are the hard limits on the result. The curve itself keeps going in cold
+  weather. Choose your **heat emitter type** (underfloor 25–45 °C, radiators 30–55 °C) to set sensible
+  limits, curve and learning speed, then fine-tune.
 * A new setpoint is only written when it changes by ≥ 0.5 °C, and at most every 5 min
   (configurable), to keep bus traffic and EEPROM writes low.
 

@@ -65,3 +65,13 @@ def test_adaptive_integrates_and_clamps():
     assert a.value == 2.0
     a.update(3600, None, 21.0, learning=True)
     assert a.value == 2.0
+
+
+def test_adaptive_anti_windup():
+    a = C.AdaptiveOffset(rate=1.0, limit=5.0)
+    a.update(3600, 20.0, 21.0, learning=True, limited=1)  # cold but flow at max
+    assert a.value == 0.0
+    a.update(3600, 22.0, 21.0, learning=True, limited=1)  # warm: may still unwind
+    assert a.value == -1.0
+    a.update(3600, 22.0, 21.0, learning=True, limited=-1)  # warm but flow at min
+    assert a.value == -1.0

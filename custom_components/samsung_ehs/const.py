@@ -24,6 +24,8 @@ CONF_WEATHER_ENTITY = "weather_entity"
 CONF_OUTDOOR_SENSOR = "outdoor_sensor"
 CONF_EXTENDED = "extended_registers"
 CONF_WC_INTERVAL = "wc_interval"
+CONF_HOT_WATER = "hot_water"
+DEFAULT_HOT_WATER = True
 
 DEFAULT_SCAN_INTERVAL = 15  # seconds
 DEFAULT_WC_INTERVAL = 300  # minimum seconds between flow setpoint writes
@@ -48,9 +50,33 @@ WC_MIN_OFF = "wc_min_off"  # minutes
 WC_ADAPT_RATE = "wc_adapt_rate"  # K curve offset per hour per K room error
 WC_ADAPT_LIMIT = "wc_adapt_limit"  # K
 
+# Heat emitter presets. Selecting an emitter type applies its values; they
+# can then be fine-tuned individually with the number entities.
+EMITTER_UFH = "underfloor"
+EMITTER_RADIATORS = "radiators"
+EMITTER_PRESETS: dict[str, dict[str, float]] = {
+    # Screed floors respond over hours: low flow, slow learning.
+    EMITTER_UFH: {
+        "wc_flow_min": 25.0,
+        "wc_flow_max": 45.0,
+        "wc_flow_design": 40.0,
+        "wc_flow_mild": 25.0,
+        "wc_adapt_rate": 0.25,
+    },
+    # Radiators respond in minutes: higher flow, faster learning.
+    EMITTER_RADIATORS: {
+        "wc_flow_min": 30.0,
+        "wc_flow_max": 55.0,
+        "wc_flow_design": 50.0,
+        "wc_flow_mild": 30.0,
+        "wc_adapt_rate": 0.75,
+    },
+}
+DEFAULT_EMITTER = EMITTER_UFH
+
 WC_DEFAULTS: dict[str, float] = {
     WC_OUTDOOR_DESIGN: -3.0,
-    WC_FLOW_DESIGN: 45.0,
+    WC_FLOW_DESIGN: 40.0,
     WC_OUTDOOR_MILD: 15.0,
     WC_FLOW_MILD: 25.0,
     WC_ROOM_TARGET: 21.0,
@@ -58,13 +84,13 @@ WC_DEFAULTS: dict[str, float] = {
     WC_ROOM_MAX_OFFSET: 5.0,
     WC_FORECAST_HOURS: 6.0,
     WC_FORECAST_WEIGHT: 0.3,
-    WC_FLOW_MIN: 20.0,
-    WC_FLOW_MAX: 55.0,
+    WC_FLOW_MIN: 25.0,
+    WC_FLOW_MAX: 45.0,
     WC_HEATING_CUTOFF: 17.0,
     WC_HYSTERESIS: 1.0,
     WC_MIN_ON: 20.0,
     WC_MIN_OFF: 0.0,
-    WC_ADAPT_RATE: 0.5,
+    WC_ADAPT_RATE: 0.25,
     WC_ADAPT_LIMIT: 5.0,
 }
 

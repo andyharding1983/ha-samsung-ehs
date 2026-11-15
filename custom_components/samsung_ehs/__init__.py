@@ -6,17 +6,21 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.typing import StateType
 
 from .api import EhsClient
 from .const import (
     CONF_BAUDRATE,
+    CONF_HOT_WATER,
     CONF_INDOOR_INDEX,
     CONF_OUTDOOR_SENSOR,
     CONF_PORT,
     CONF_SLAVE,
     CONF_WEATHER_ENTITY,
     DEFAULT_BAUDRATE,
+    DEFAULT_HOT_WATER,
+    DOMAIN,
     DEFAULT_INDOOR_INDEX,
 )
 from .coordinator import EhsCoordinator
@@ -26,6 +30,7 @@ PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
     Platform.CLIMATE,
     Platform.NUMBER,
+    Platform.SELECT,
     Platform.SENSOR,
     Platform.SWITCH,
     Platform.WATER_HEATER,
@@ -38,7 +43,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: EhsConfigEntry) -> bool:
     """Set up Samsung EHS from a config entry."""
     indoor_index = entry.data.get(CONF_INDOOR_INDEX, DEFAULT_INDOOR_INDEX)
     if entry.data[CONF_PORT] == SIM_PORT:
-        client = SimulatedClient(_sim_outdoor(hass, entry), indoor_index)
+        client = SimulatedClient(
+            _sim_outdoor(hass, entry),
+            indoor_index,
+            hot_water=entry.options.get(CONF_HOT_WATER, DEFAULT_HOT_WATER),
+        )
     else:
         client = EhsClient(
             port=entry.data[CONF_PORT],
@@ -54,6 +63,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: EhsConfigEntry) -> bool:
         await coordinator.async_shutdown()
         raise
     entry.runtime_data = coordinator
+    if not coordinator.hot_water:
+        _remove_hot_water_entities(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     # Entities have now restored the room target, on/off and tuning values.
     coordinator.ready = True
@@ -62,6 +73,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: EhsConfigEntry) -> bool:
     )
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     return True
+
+
+HOT_WATER_ENTITIES = (("water_heater", "hot_water"), ("sensor", "dhw_temp"))
+
+
+def _remove_hot_water_entities(hass: HomeAssistant, entry: EhsConfigEntry) -> None:
+    """Drop hot water entities left over from before the option was turned off."""
+    reg = er.async_get(hass)
+    for domain, key in HOT_WATER_ENTITIES:
+        if entity_id := reg.async_get_entity_id(domain, DOMAIN, f"{entry.entry_id}_{key}"):
+            reg.async_remove(entity_id)
 
 
 def _sim_outdoor(hass: HomeAssistant, entry: EhsConfigEntry):

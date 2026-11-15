@@ -97,10 +97,10 @@ async def test_entities(hass: HomeAssistant, client) -> None:
 async def test_weather_compensation_always_on(hass: HomeAssistant, client) -> None:
     hass.states.async_set("sensor.room", "20.0", {"unit_of_measurement": "°C"})
     await _setup(hass, {"room_sensor": "sensor.room"})
-    # outdoor 5 C on default curve (-3->45, 15->25): 36.1, + room 3*(21-20)=3 -> 39.0
-    client.write_indoor.assert_any_await(R.IU_WATER_OUT_SET, 390)
+    # outdoor 5 C on UFH default curve (-3->40, 15->25): 33.3, + room 3*(21-20)=3 -> 36.5
+    client.write_indoor.assert_any_await(R.IU_WATER_OUT_SET, 365)
     wc = hass.states.get("sensor.samsung_ehs_flow_target")
-    assert float(wc.state) == 39.0
+    assert float(wc.state) == 36.5
     assert wc.attributes["room_offset"] == 3.0
     assert wc.attributes["last_write"] is not None
 
@@ -112,8 +112,8 @@ async def test_target_change_rewrites_flow(hass: HomeAssistant, client) -> None:
         "climate", "set_temperature",
         {"entity_id": "climate.samsung_ehs", "temperature": 21.5}, blocking=True,
     )
-    # room offset now 3*1.5=4.5 -> 36.1+4.5 = 40.6 -> 40.5
-    client.write_indoor.assert_any_await(R.IU_WATER_OUT_SET, 405)
+    # room offset now 3*1.5=4.5 -> 33.3+4.5 = 37.8 -> 38.0
+    client.write_indoor.assert_any_await(R.IU_WATER_OUT_SET, 380)
     assert hass.states.get("climate.samsung_ehs").attributes["temperature"] == 21.5
 
 
@@ -213,3 +213,57 @@ async def test_diagnostics(hass: HomeAssistant, client) -> None:
     diag = await async_get_config_entry_diagnostics(hass, entry)
     assert diag["data"]["water_out"] == 35.0
     assert diag["weather_compensation"]["outdoor_used"] == 5.0
+
+
+async def test_emitter_select_applies_preset(hass: HomeAssistant, client) -> None:
+    await _setup(hass)
+    sel = hass.states.get("select.samsung_ehs_heat_emitter_type")
+    assert sel.state == "underfloor"
+    assert hass.states.get("number.samsung_ehs_maximum_flow_temperature").state == "45.0"
+    await hass.services.async_call(
+        "select", "select_option",
+        {"entity_id": "select.samsung_ehs_heat_emitter_type", "option": "radiators"},
+        blocking=True,
+    )
+    assert hass.states.get("number.samsung_ehs_maximum_flow_temperature").state == "55.0"
+    assert hass.states.get("number.samsung_ehs_minimum_flow_temperature").state == "30.0"
+    assert hass.states.get("number.samsung_ehs_adaptive_learning_rate").state == "0.75"
+    # radiator curve at 5 C outdoor: 50 + (30-50)/18*8 = 41.1, + unit room 20.0 -> +3 = 44.0
+    client.write_indoor.assert_any_await(R.IU_WATER_OUT_SET, 440)
+
+
+async def test_no_learning_during_hot_water(hass: HomeAssistant, client) -> None:
+    ext = {"outdoor_temp": 5.0, "compressor_freq": 40, "flow_rate": 15.0, "dhw_valve": 1}
+    client.read_all.return_value = _snapshot(extended=ext)
+    hass.states.async_set("sensor.room", "19.0", {"unit_of_measurement": "°C"})
+    await _setup(hass, {"room_sensor": "sensor.room"})
+    c = hass.config_entries.async_entries(DOMAIN)[0].runtime_data
+    c._last_control -= 3600  # pretend an hour passed
+    await c.async_control()
+    assert c.adaptive.value == 0.0
+
+
+async def test_heating_only_hides_hot_water(hass: HomeAssistant, client) -> None:
+    from homeassistant.helpers import entity_registry as er
+
+    entry = await _setup(hass)
+    assert hass.states.get("water_heater.samsung_ehs_hot_water") is not None
+    hass.config_entries.async_update_entry(entry, options={"hot_water": False})
+    await hass.async_block_till_done()  # update listener reloads the entry
+    reg = er.async_get(hass)
+    assert hass.states.get("water_heater.samsung_ehs_hot_water") is None
+    assert reg.async_get("water_heater.samsung_ehs_hot_water") is None
+    assert reg.async_get("sensor.samsung_ehs_hot_water_temperature") is None
+    assert hass.states.get("climate.samsung_ehs") is not None
+
+
+async def test_config_flow_heating_only(hass: HomeAssistant, client) -> None:
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {**DATA, "hot_water": False}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == DATA
+    assert result["options"] == {"hot_water": False}

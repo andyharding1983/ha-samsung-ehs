@@ -21,6 +21,7 @@ from . import registers as R
 from .api import EhsClient, EhsConnectionError
 from .const import (
     CONF_EXTENDED,
+    CONF_HOT_WATER,
     CONF_OUTDOOR_SENSOR,
     CONF_POWER_SENSOR,
     CONF_ROOM_SENSOR,
@@ -28,9 +29,12 @@ from .const import (
     CONF_WC_INTERVAL,
     CONF_WEATHER_ENTITY,
     DEFAULT_EXTENDED,
+    DEFAULT_HOT_WATER,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_WC_INTERVAL,
+    DEFAULT_EMITTER,
     DOMAIN,
+    EMITTER_PRESETS,
     WC_ADAPT_LIMIT,
     WC_ADAPT_RATE,
     WC_DEFAULTS,
@@ -95,6 +99,7 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         )
         self.client = client
         self.extended = opts.get(CONF_EXTENDED, DEFAULT_EXTENDED)
+        self.hot_water: bool = opts.get(CONF_HOT_WATER, DEFAULT_HOT_WATER)
         self.room_sensor: str | None = opts.get(CONF_ROOM_SENSOR)
         self.power_sensor: str | None = opts.get(CONF_POWER_SENSOR)
         self.weather_entity: str | None = opts.get(CONF_WEATHER_ENTITY)
@@ -107,6 +112,7 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         # entities; room target and on/off by the (restored) climate entity.
         self.wc_params: dict[str, float] = dict(WC_DEFAULTS)
         self.heating_enabled = True
+        self.emitter = DEFAULT_EMITTER
         self.wc_result: WcResult | None = None
         self.wc_last_write: datetime | None = None
         self.thermostat = Thermostat()
@@ -282,6 +288,13 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         self.adaptive.rate = p[WC_ADAPT_RATE]
         self.adaptive.limit = p[WC_ADAPT_LIMIT]
 
+    async def async_set_emitter(self, emitter: str) -> None:
+        """Switch emitter type and apply its preset values."""
+        self.emitter = emitter
+        self.wc_params.update(EMITTER_PRESETS[emitter])
+        self._apply_thermostat_params()
+        await self.async_control(force_flow=True)
+
     @property
     def room_target(self) -> float:
         return self.wc_params[WC_ROOM_TARGET]
@@ -320,8 +333,15 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
 
         room = self.room_temp()
         target = self.room_target
-        running = self.heating_enabled and data.power and not data.defrost
-        self.adaptive.update(dt_s, room, target, learning=running)
+        # Learn only while actually space heating: not paused, defrosting or
+        # diverted to the hot water cylinder.
+        running = (
+            self.heating_enabled and data.power and not data.defrost and not (self.hot_water and data.dhw_active)
+        )
+        prev = self.wc_result
+        self.adaptive.update(
+            dt_s, room, target, learning=running, limited=prev.limited if prev else 0
+        )
 
         outdoor = self.outdoor_temp()
         result: WcResult | None = None

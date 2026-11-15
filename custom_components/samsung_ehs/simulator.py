@@ -39,6 +39,7 @@ class SimulatedClient:
         outdoor_fn: Callable[[], float | None],
         indoor_index: int = 0,
         clock: Callable[[], float] = time.monotonic,
+        hot_water: bool = True,
     ) -> None:
         self._outdoor_fn = outdoor_fn
         self._clock = clock
@@ -59,7 +60,7 @@ class SimulatedClient:
         self._set_t(b + R.IU_WATER_OUT, 30.0)
         self._set_t(b + R.IU_WATER_IN, 28.0)
         self._set_t(b + R.IU_WATER_OUT_SET, 35.0)
-        self._set(b + R.IU_DHW_POWER, 1)
+        self._set(b + R.IU_DHW_POWER, 1 if hot_water else 0)
         self._set(b + R.IU_DHW_MODE, int(R.DhwMode.STANDARD))
         self._set_t(b + R.IU_DHW_SET, 48.0)
         self._set_t(b + R.IU_DHW_TEMP, 46.0)
@@ -189,6 +190,7 @@ class SimulatedClient:
             outdoor_temp=R.encode_temp(outdoor),
             compressor_freq=freq,
             flow_rate=int(FLOW_RATE_LPM * 10) if pumping else 0,
+            dhw_valve=1 if self._dhw_heating else 0,
         )
         for addr, val in R.extended_layout():
             self._set(addr, ext.get(val.key, 0))

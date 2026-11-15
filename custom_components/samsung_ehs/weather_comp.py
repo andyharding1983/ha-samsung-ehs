@@ -49,6 +49,7 @@ class WcResult:
     effective_outdoor: float
     forecast_mean: float | None
     heating_needed: bool
+    limited: int = 0  # +1 held at flow_max, -1 held at flow_min, 0 free
 
 
 def _clamp(val: float, lo: float, hi: float) -> float:
@@ -110,7 +111,9 @@ def compute(
         )
     base = curve_flow(p, eff)
     off = room_offset(p, room_temp)
-    flow = _clamp(base + curve_offset + off, p.flow_min, p.flow_max)
+    raw = base + curve_offset + off
+    flow = _clamp(raw, p.flow_min, p.flow_max)
+    limited = 1 if raw > p.flow_max else -1 if raw < p.flow_min else 0
     return WcResult(
         flow_target=round_half(flow),
         curve_flow=round(base, 2),
@@ -119,4 +122,5 @@ def compute(
         effective_outdoor=eff,
         forecast_mean=fmean_,
         heating_needed=True,
+        limited=limited,
     )

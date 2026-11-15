@@ -61,6 +61,8 @@ def _wc_attrs(c: EhsCoordinator) -> dict[str, Any] | None:
     }
 
 
+HOT_WATER_SENSORS = {"dhw_temp"}
+
 SENSORS: tuple[EhsSensorDescription, ...] = (
     EhsSensorDescription(key="flow_temp", **TEMP, value_fn=lambda c: c.data.water_out),
     EhsSensorDescription(key="return_temp", **TEMP, value_fn=lambda c: c.data.water_in),
@@ -172,7 +174,11 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data
-    async_add_entities(EhsSensor(coordinator, d) for d in SENSORS)
+    async_add_entities(
+        EhsSensor(coordinator, d)
+        for d in SENSORS
+        if coordinator.hot_water or d.key not in HOT_WATER_SENSORS
+    )
 
 
 class EhsSensor(EhsEntity, SensorEntity):

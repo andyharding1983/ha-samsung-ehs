@@ -8,12 +8,14 @@
           "port": "Serial port",
           "slave": "Modbus address",
           "baudrate": "Baud rate",
-          "indoor_index": "Indoor unit index"
+          "indoor_index": "Indoor unit index",
+          "hot_water": "Hot water cylinder"
         },
         "data_description": {
           "port": "For example /dev/ttyUSB0 or /dev/serial/by-id/…, or 'simulator' to try it without hardware.",
           "slave": "Set by the DIP and rotary switches on the MIM-B19N (1–247).",
-          "indoor_index": "0 for a single EHS unit."
+          "indoor_index": "0 for a single EHS unit.",
+          "hot_water": "Turn off for heating-only systems. The hot water controls and sensors are then hidden."
         }
       }
     },
@@ -36,13 +38,15 @@
           "outdoor_sensor": "Outdoor temperature sensor override",
           "extended_registers": "Read extended registers (outdoor temp, flow rate, compressor)",
           "scan_interval": "Poll interval",
-          "wc_interval": "Minimum time between flow setpoint changes"
+          "wc_interval": "Minimum time between flow setpoint changes",
+          "hot_water": "Hot water cylinder"
         },
         "data_description": {
           "room_sensor": "The thermostat's room temperature. If empty, the Samsung controller's room sensor is used.",
           "power_sensor": "Used for COP. Should measure the whole outdoor unit in W or kW.",
           "weather_entity": "Hourly forecast is blended into the outdoor temperature.",
-          "outdoor_sensor": "Leave empty to use the heat pump's own outdoor sensor."
+          "outdoor_sensor": "Leave empty to use the heat pump's own outdoor sensor.",
+          "hot_water": "Turn off for heating-only systems. The hot water controls and sensors are then hidden."
         }
       }
     }
@@ -194,6 +198,15 @@
     "climate": {
       "heating": {
         "name": "Heating"
+      }
+    },
+    "select": {
+      "emitter_type": {
+        "name": "Heat emitter type",
+        "state": {
+          "underfloor": "Underfloor heating",
+          "radiators": "Radiators"
+        }
       }
     }
   }

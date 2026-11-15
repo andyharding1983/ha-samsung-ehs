@@ -21,6 +21,7 @@ from .simulator import SIM_PORT
 from .const import (
     CONF_BAUDRATE,
     CONF_EXTENDED,
+    CONF_HOT_WATER,
     CONF_INDOOR_INDEX,
     CONF_OUTDOOR_SENSOR,
     CONF_PORT,
@@ -32,6 +33,7 @@ from .const import (
     CONF_WEATHER_ENTITY,
     DEFAULT_BAUDRATE,
     DEFAULT_EXTENDED,
+    DEFAULT_HOT_WATER,
     DEFAULT_INDOOR_INDEX,
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
@@ -54,6 +56,7 @@ USER_SCHEMA = vol.Schema(
         vol.Required(CONF_INDOOR_INDEX, default=DEFAULT_INDOOR_INDEX): vol.All(
             vol.Coerce(int), vol.Range(min=0, max=47)
         ),
+        vol.Required(CONF_HOT_WATER, default=DEFAULT_HOT_WATER): bool,
     }
 )
 
@@ -93,7 +96,11 @@ class EhsConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected error")
                 errors["base"] = "unknown"
             else:
-                return self.async_create_entry(title="Samsung EHS", data=user_input)
+                data = dict(user_input)
+                hot_water = data.pop(CONF_HOT_WATER)
+                return self.async_create_entry(
+                    title="Samsung EHS", data=data, options={CONF_HOT_WATER: hot_water}
+                )
         return self.async_show_form(
             step_id="user",
             data_schema=self.add_suggested_values_to_schema(USER_SCHEMA, user_input),
@@ -127,6 +134,9 @@ class EhsOptionsFlow(OptionsFlow):
                 vol.Optional(CONF_POWER_SENSOR): _entity("sensor", "power"),
                 vol.Optional(CONF_WEATHER_ENTITY): _entity("weather"),
                 vol.Optional(CONF_OUTDOOR_SENSOR): _entity("sensor", "temperature"),
+                vol.Required(
+                    CONF_HOT_WATER, default=DEFAULT_HOT_WATER
+                ): selector.BooleanSelector(),
                 vol.Required(
                     CONF_EXTENDED, default=DEFAULT_EXTENDED
                 ): selector.BooleanSelector(),

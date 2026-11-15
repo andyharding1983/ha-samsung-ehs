@@ -52,3 +52,10 @@ def test_cold_forecast_raises_flow():
 def test_round_half():
     assert W.round_half(36.26) == 36.5
     assert W.round_half(36.2) == 36.0
+
+
+def test_limited_flag():
+    p = W.WcParams(flow_max=45.0, room_gain=3.0, room_max_offset=5.0)
+    assert W.compute(p, -10.0, None, 18.0).limited == 1
+    assert W.compute(p, 5.0, None, 21.0).limited == 0
+    assert W.compute(W.WcParams(flow_min=30.0), 14.0, None, 23.0).limited == -1
