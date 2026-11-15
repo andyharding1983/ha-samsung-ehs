@@ -183,6 +183,101 @@ warms up. The same applies downwards at the *minimum*. It can always learn back 
 | `learned_flow_at_design` | Curve flow at the design temperature including learning (°C). This is what *Apply learned curve* would set. |
 | `learned_flow_at_mild` | The same at the mild temperature (°C) |
 | `design_weight` | `w` at today's effective outdoor temperature (0–1) |
+| `curve` | The whole curve sampled every 1 °C from 5 °C below the design temperature up to the heating cut-off: a list of `{outdoor, set, learned}`. `set` is your curve, `learned` includes the learned offsets. Both are limited to min/max flow. It's for plotting and isn't stored in the recorder database. |
+
+### Learned flow at cold end / mild end
+
+`sensor.samsung_ehs_learned_flow_at_cold_end` and `sensor.samsung_ehs_learned_flow_at_mild_end` (°C)
+show the two ends of the learned curve as ordinary temperature sensors, so they have a history graph.
+They have the same values as `learned_flow_at_design` and `learned_flow_at_mild` above.
+
+- If both lines rise together, the curve is too low overall.
+- If only the cold end rises, the curve is too flat: it needs more heat as it gets colder.
+- If only the mild end rises, the curve is too steep.
+
+| Attribute | Meaning |
+|---|---|
+| `outdoor_temperature` | Outdoor temperature at this end of the curve (°C) |
+| `set_flow` | The flow you set for this end (°C) |
+| `learned_offset` | What learning has added at this end (K) |
+
+### Viewing the learned curve
+
+**History, with no extra cards:** add a *History graph* card containing the two *Learned flow at …* sensors.
+You'll see how each end has moved over days and weeks.
+
+**Curve plot (optional, needs [ApexCharts card](https://github.com/RomRider/apexcharts-card) from HACS):**
+this plots your set curve, the learned curve and today's flow target against outdoor temperature.
+
+ApexCharts card only supports time axes, so the card spreads the outdoor range `LO`…`HI` across the time
+window and relabels the axis. If you change the range, set `LO` and `HI` to the same values in all three
+places.
+
+```yaml
+type: custom:apexcharts-card
+header:
+  show: true
+  title: Heating curve
+graph_span: 1d
+update_interval: 1min
+yaxis:
+  - min: 20
+    max: 50
+    decimals: 0
+apex_config:
+  chart:
+    height: 300
+  legend:
+    show: true
+  markers:
+    size: [0, 0, 7]
+  stroke:
+    dashArray: [5, 0, 0]
+  xaxis:
+    type: numeric
+    tickAmount: 7
+    labels:
+      formatter: |
+        EVAL:function (v, t, o) {
+          const LO = -15, HI = 20, g = o.w.globals;
+          return Math.round(LO + (v - g.minX) / (g.maxX - g.minX) * (HI - LO)) + '°';
+        }
+  tooltip:
+    x:
+      formatter: |
+        EVAL:function (v, o) {
+          const LO = -15, HI = 20, g = o.w.globals;
+          return 'Outdoor ' + (LO + (v - g.minX) / (g.maxX - g.minX) * (HI - LO)).toFixed(1) + ' °C';
+        }
+series:
+  - entity: sensor.samsung_ehs_learned_curve_offset
+    name: Set curve
+    color: '#9e9e9e'
+    data_generator: |
+      const LO = -15, HI = 20, t0 = start.getTime(), w = end.getTime() - t0;
+      return (entity.attributes.curve || [])
+        .filter((p) => p.outdoor >= LO && p.outdoor <= HI)
+        .map((p) => [t0 + (p.outdoor - LO) / (HI - LO) * w, p.set]);
+  - entity: sensor.samsung_ehs_learned_curve_offset
+    name: Learned curve
+    color: '#ff7043'
+    data_generator: |
+      const LO = -15, HI = 20, t0 = start.getTime(), w = end.getTime() - t0;
+      return (entity.attributes.curve || [])
+        .filter((p) => p.outdoor >= LO && p.outdoor <= HI)
+        .map((p) => [t0 + (p.outdoor - LO) / (HI - LO) * w, p.learned]);
+  - entity: sensor.samsung_ehs_flow_target
+    name: Flow target now
+    color: '#29b6f6'
+    data_generator: |
+      const LO = -15, HI = 20, t0 = start.getTime(), w = end.getTime() - t0;
+      const x = entity.attributes.effective_outdoor;
+      if (x == null || entity.state === 'unavailable') return [];
+      return [[t0 + (Math.min(HI, Math.max(LO, x)) - LO) / (HI - LO) * w, Number(entity.state)]];
+```
+
+The blue dot is today's flow target, plotted at the effective outdoor temperature. It sits above or below
+the learned curve by the current room correction (`room_offset`).
 
 **Folding it in:** once the offsets have settled, press **Apply learned curve**. It copies
 `learned_flow_at_design` and `learned_flow_at_mild` into the two curve points and resets both offsets to

@@ -109,6 +109,12 @@
       },
       "adaptive_offset": {
         "name": "Learned curve offset"
+      },
+      "learned_flow_design": {
+        "name": "Learned flow at cold end"
+      },
+      "learned_flow_mild": {
+        "name": "Learned flow at mild end"
       }
     },
     "binary_sensor": {

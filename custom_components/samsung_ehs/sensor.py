@@ -26,6 +26,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import EhsConfigEntry
 from .coordinator import EhsCoordinator
 from .entity import EhsEntity
+from .weather_comp import curve_points
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -72,7 +73,30 @@ def _adaptive_attrs(c: EhsCoordinator) -> dict[str, Any]:
         "learned_flow_at_design": round(p["wc_flow_design"] + a.design, 1),
         "learned_flow_at_mild": round(p["wc_flow_mild"] + a.mild, 1),
         "design_weight": round(c.wc_result.design_weight, 2) if c.wc_result else None,
+        "curve": curve_points(c.params(), a.design, a.mild),
     }
+
+
+def _learned_end(
+    end: str,
+) -> tuple[Callable[[EhsCoordinator], Any], Callable[[EhsCoordinator], dict[str, Any]]]:
+    flow_key, out_key = (
+        ("wc_flow_design", "wc_outdoor_design")
+        if end == "design"
+        else ("wc_flow_mild", "wc_outdoor_mild")
+    )
+
+    def value(c: EhsCoordinator) -> float:
+        return round(c.wc_params[flow_key] + getattr(c.adaptive, end), 1)
+
+    def attrs(c: EhsCoordinator) -> dict[str, Any]:
+        return {
+            "outdoor_temperature": c.wc_params[out_key],
+            "set_flow": c.wc_params[flow_key],
+            "learned_offset": round(getattr(c.adaptive, end), 2),
+        }
+
+    return value, attrs
 
 
 SENSORS: tuple[EhsSensorDescription, ...] = (
@@ -169,6 +193,20 @@ SENSORS: tuple[EhsSensorDescription, ...] = (
         attrs_fn=_adaptive_attrs,
     ),
     EhsSensorDescription(
+        key="learned_flow_design",
+        **TEMP,
+        suggested_display_precision=1,
+        value_fn=_learned_end("design")[0],
+        attrs_fn=_learned_end("design")[1],
+    ),
+    EhsSensorDescription(
+        key="learned_flow_mild",
+        **TEMP,
+        suggested_display_precision=1,
+        value_fn=_learned_end("mild")[0],
+        attrs_fn=_learned_end("mild")[1],
+    ),
+    EhsSensorDescription(
         key="outdoor_error",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda c: c.data.outdoor_error,
@@ -196,6 +234,8 @@ async def async_setup_entry(
 
 class EhsSensor(EhsEntity, SensorEntity):
     entity_description: EhsSensorDescription
+    # The sampled curve is for live plotting only; keep it out of the database.
+    _unrecorded_attributes = frozenset({"curve"})
 
     def __init__(self, coordinator: EhsCoordinator, description: EhsSensorDescription) -> None:
         super().__init__(coordinator, description.key)

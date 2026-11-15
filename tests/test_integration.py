@@ -283,6 +283,14 @@ async def test_curve_learning_and_apply(hass: HomeAssistant, client) -> None:
 
     sensor = hass.states.get("sensor.samsung_ehs_learned_curve_offset")
     assert sensor.attributes["learned_flow_at_design"] > 40.0
+    curve = sensor.attributes["curve"]
+    assert curve[0]["outdoor"] == -8.0 and curve[-1]["outdoor"] == 17.0
+    assert all(pt["learned"] >= pt["set"] for pt in curve)
+    cold = hass.states.get("sensor.samsung_ehs_learned_flow_at_cold_end")
+    mild = hass.states.get("sensor.samsung_ehs_learned_flow_at_mild_end")
+    assert float(cold.state) == sensor.attributes["learned_flow_at_design"]
+    assert float(mild.state) == sensor.attributes["learned_flow_at_mild"]
+    assert cold.attributes["outdoor_temperature"] == -3.0
 
     d, m = c.adaptive.design, c.adaptive.mild
     await hass.services.async_call(

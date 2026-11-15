@@ -109,6 +109,12 @@ effective outdoor temperature, forecast mean, heat demand and last write. The `F
 diagnostic sensor is the value the unit is actually using. See
 [flow target vs flow setpoint](docs/entities.md#flow-target-vs-flow-setpoint).
 
+### Seeing what it has learned
+
+The two *Learned flow at cold end / mild end* sensors have a history graph that shows how the curve is
+changing. There's an optional ApexCharts card that plots the set and learned curves against outdoor
+temperature. See [docs/entities.md](docs/entities.md#viewing-the-learned-curve).
+
 ### Tuning tips
 
 1. Get the curve roughly right. If the heat pump keeps pausing on overshoot, the curve is too high.

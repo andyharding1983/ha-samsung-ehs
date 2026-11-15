@@ -95,6 +95,32 @@ def design_weight(p: WcParams, eff_outdoor: float) -> float:
     return max(0.0, min(1.0, (p.outdoor_mild - eff_outdoor) / span))
 
 
+def curve_points(
+    p: WcParams,
+    offset_design: float = 0.0,
+    offset_mild: float = 0.0,
+    step: float = 1.0,
+    margin: float = 5.0,
+) -> list[dict[str, float]]:
+    """Sample the set and learned curves for plotting.
+
+    Runs from `margin` below the design temperature up to the heating
+    cut-off; both curves are clamped to the flow limits as in `compute`.
+    """
+    out: list[dict[str, float]] = []
+    lo, hi = p.outdoor_design - margin, p.heating_cutoff
+    n = max(1, int(round((hi - lo) / step)))
+    for i in range(n + 1):
+        t = round(min(hi, lo + i * step), 1)
+        base = curve_flow(p, t)
+        w = design_weight(p, t)
+        learned = _clamp(
+            base + w * offset_design + (1 - w) * offset_mild, p.flow_min, p.flow_max
+        )
+        out.append({"outdoor": t, "set": round(base, 1), "learned": round(learned, 1)})
+    return out
+
+
 def round_half(val: float) -> float:
     """Round to the nearest 0.5 K to keep setpoint writes infrequent."""
     return round(val * 2) / 2
