@@ -132,7 +132,7 @@ SENSORS: tuple[EhsSensorDescription, ...] = (
         key="heat_energy_today",
         device_class=SensorDeviceClass.ENERGY,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        state_class=SensorStateClass.TOTAL,
+        state_class=SensorStateClass.TOTAL_INCREASING,
         suggested_display_precision=2,
         value_fn=lambda c: round(c.energy.heat_today_kwh, 3),
     ),

@@ -170,3 +170,24 @@ async def test_simulator_entry(hass: HomeAssistant) -> None:
     wc = hass.states.get("sensor.samsung_ehs_weather_compensation_target")
     assert wc.state not in ("unknown", "unavailable")
     assert wc.attributes["effective_outdoor"] == 4.2
+
+
+async def test_implausible_room_temp_ignored(hass: HomeAssistant, client) -> None:
+    # No room sensor configured and unit reports 0.0 C (no Samsung sensor)
+    client.read_all.return_value = _snapshot(room_temp=0.0)
+    await _setup(hass)
+    coordinator = hass.config_entries.async_entries(DOMAIN)[0].runtime_data
+    assert coordinator.room_temp() is None
+    await coordinator.async_run_wc()
+    assert coordinator.wc_result.room_offset == 0.0
+
+
+async def test_diagnostics(hass: HomeAssistant, client) -> None:
+    from custom_components.samsung_ehs.diagnostics import (
+        async_get_config_entry_diagnostics,
+    )
+
+    entry = await _setup(hass)
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+    assert diag["data"]["water_out"] == 35.0
+    assert diag["weather_compensation"]["outdoor_used"] == 5.0

@@ -43,6 +43,16 @@ FORECAST_REFRESH = timedelta(minutes=30)
 SAVE_EVERY = timedelta(minutes=5)
 
 
+OUTDOOR_RANGE = (-40.0, 50.0)
+ROOM_RANGE = (5.0, 35.0)
+
+
+def _plausible(val: float | None, rng: tuple[float, float]) -> float | None:
+    if val is None or not rng[0] <= val <= rng[1]:
+        return None
+    return val
+
+
 def _float_state(hass: HomeAssistant, entity_id: str | None) -> float | None:
     if not entity_id:
         return None
@@ -162,17 +172,17 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
 
     # ------------------------------------------------- weather compensation
     def outdoor_temp(self) -> float | None:
-        ext = _float_state(self.hass, self.outdoor_sensor)
-        if ext is not None:
-            return ext
-        if self.data and self.data.extended:
-            return self.data.extended.get("outdoor_temp")
-        return None
+        val = _plausible(_float_state(self.hass, self.outdoor_sensor), OUTDOOR_RANGE)
+        if val is None and self.data and self.data.extended:
+            val = _plausible(self.data.extended.get("outdoor_temp"), OUTDOOR_RANGE)
+        return val
 
     def room_temp(self) -> float | None:
-        val = _float_state(self.hass, self.room_sensor)
+        # A unit without a Samsung room sensor can report 0 here; reject
+        # anything implausible rather than drive a maximum room boost.
+        val = _plausible(_float_state(self.hass, self.room_sensor), ROOM_RANGE)
         if val is None and self.data:
-            val = self.data.room_temp
+            val = _plausible(self.data.room_temp, ROOM_RANGE)
         return val
 
     async def _async_refresh_forecast(self) -> None:
