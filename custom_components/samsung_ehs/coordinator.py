@@ -268,5 +268,6 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         try:
             await self.async_write(R.IU_WATER_OUT_SET, R.encode_temp(target))
             self.wc_last_write = dt_util.utcnow()
+            self.async_update_listeners()
         except HomeAssistantError as err:
             _LOGGER.warning("WC: could not write flow setpoint: %s", err)

@@ -130,6 +130,7 @@ async def test_weather_compensation_writes_flow(hass: HomeAssistant, client) -> 
     wc = hass.states.get("sensor.samsung_ehs_weather_compensation_target")
     assert float(wc.state) == 39.0
     assert wc.attributes["room_offset"] == 3.0
+    assert wc.attributes["last_write"] is not None
 
     climate = hass.states.get("climate.samsung_ehs")
     assert climate.attributes["temperature"] == 21.0  # now the room target
@@ -165,3 +166,7 @@ async def test_simulator_entry(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
     assert hass.states.get("sensor.samsung_ehs_outdoor_temperature").state == "4.2"
     assert hass.states.get("climate.samsung_ehs").state == "heat"
+    # WC preview is calculated at startup even while disabled
+    wc = hass.states.get("sensor.samsung_ehs_weather_compensation_target")
+    assert wc.state not in ("unknown", "unavailable")
+    assert wc.attributes["effective_outdoor"] == 4.2
