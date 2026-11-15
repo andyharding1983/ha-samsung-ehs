@@ -56,6 +56,18 @@ Then open **Configure** on the integration to set:
 | Outdoor temperature sensor override | Use instead of the heat pump's own outdoor sensor |
 | Read extended registers | Outdoor temperature, flow rate and compressor frequency (see below) |
 
+## Dashboard
+
+A ready-made dashboard is in [`dashboards/samsung_ehs.yaml`](dashboards/samsung_ehs.yaml). It has sections
+for heating, weather compensation (with the curve chart and learning history), hot water, and performance
+(power, heat, COP).
+
+1. Create a new dashboard from scratch.
+2. Open its **Raw configuration editor** and paste the file in.
+
+The curve chart needs [ApexCharts card](https://github.com/RomRider/apexcharts-card). Everything else uses
+built-in cards. The file's header has the details.
+
 ## Trying it without hardware
 
 Enter `simulator` as the serial port. A simulated heat pump follows the outdoor temperature
