@@ -63,6 +63,17 @@ def _wc_attrs(c: EhsCoordinator) -> dict[str, Any] | None:
 
 HOT_WATER_SENSORS = {"dhw_temp"}
 
+def _adaptive_attrs(c: EhsCoordinator) -> dict[str, Any]:
+    a, p = c.adaptive, c.wc_params
+    return {
+        "design_end_offset": round(a.design, 2),
+        "mild_end_offset": round(a.mild, 2),
+        "learned_flow_at_design": round(p["wc_flow_design"] + a.design, 1),
+        "learned_flow_at_mild": round(p["wc_flow_mild"] + a.mild, 1),
+        "design_weight": c.wc_result.design_weight if c.wc_result else None,
+    }
+
+
 SENSORS: tuple[EhsSensorDescription, ...] = (
     EhsSensorDescription(key="flow_temp", **TEMP, value_fn=lambda c: c.data.water_out),
     EhsSensorDescription(key="return_temp", **TEMP, value_fn=lambda c: c.data.water_in),
@@ -153,7 +164,8 @@ SENSORS: tuple[EhsSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.KELVIN,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=2,
-        value_fn=lambda c: round(c.adaptive.value, 2),
+        value_fn=lambda c: c.adaptive_offset,
+        attrs_fn=_adaptive_attrs,
     ),
     EhsSensorDescription(
         key="outdoor_error",

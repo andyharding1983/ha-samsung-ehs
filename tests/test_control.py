@@ -54,24 +54,37 @@ def test_warm_weather_stops_heating():
     assert t.update(2 * MIN, 19.0, 21.0, heating_needed=False) is False
 
 
-def test_adaptive_integrates_and_clamps():
-    a = C.AdaptiveOffset(rate=0.5, limit=2.0)
-    a.update(3600, 20.0, 21.0, learning=True)  # 1 K low for 1 h
-    assert a.value == 0.5
-    a.update(3600, 20.0, 21.0, learning=False)  # paused: no learning
-    assert a.value == 0.5
+def test_adaptive_cold_end_learns_in_cold_weather():
+    a = C.AdaptiveCurve(rate=0.5, limit=5.0)
+    a.update(3600, 20.0, 21.0, w_design=1.0, learning=True)  # at design temp, 1 K cold
+    assert (a.design, a.mild) == (0.5, 0.0)
+    a.update(3600, 22.0, 21.0, w_design=0.0, learning=True)  # mild day, 1 K warm
+    assert (a.design, a.mild) == (0.5, -0.5)  # slope steepened
+
+
+def test_adaptive_midpoint_learns_at_full_rate():
+    a = C.AdaptiveCurve(rate=0.5)
+    a.update(3600, 20.0, 21.0, w_design=0.5, learning=True)
+    assert a.offset_at(0.5) == 0.5  # effective change equals the rate
+    assert a.design == a.mild == 0.5
+
+
+def test_adaptive_paused_and_clamped():
+    a = C.AdaptiveCurve(rate=1.0, limit=2.0)
+    a.update(3600, 20.0, 21.0, w_design=1.0, learning=False)
+    a.update(3600, None, 21.0, w_design=1.0, learning=True)
+    a.update(3600, 20.0, 21.0, w_design=None, learning=True)
+    assert (a.design, a.mild) == (0.0, 0.0)
     for _ in range(10):
-        a.update(3600, 18.0, 21.0, learning=True)
-    assert a.value == 2.0
-    a.update(3600, None, 21.0, learning=True)
-    assert a.value == 2.0
+        a.update(3600, 15.0, 21.0, w_design=1.0, learning=True)
+    assert a.design == 2.0
 
 
 def test_adaptive_anti_windup():
-    a = C.AdaptiveOffset(rate=1.0, limit=5.0)
-    a.update(3600, 20.0, 21.0, learning=True, limited=1)  # cold but flow at max
-    assert a.value == 0.0
-    a.update(3600, 22.0, 21.0, learning=True, limited=1)  # warm: may still unwind
-    assert a.value == -1.0
-    a.update(3600, 22.0, 21.0, learning=True, limited=-1)  # warm but flow at min
-    assert a.value == -1.0
+    a = C.AdaptiveCurve(rate=1.0, limit=5.0)
+    a.update(3600, 20.0, 21.0, w_design=1.0, learning=True, limited=1)
+    assert a.design == 0.0
+    a.update(3600, 22.0, 21.0, w_design=1.0, learning=True, limited=1)
+    assert a.design == -1.0
+    a.update(3600, 22.0, 21.0, w_design=1.0, learning=True, limited=-1)
+    assert a.design == -1.0

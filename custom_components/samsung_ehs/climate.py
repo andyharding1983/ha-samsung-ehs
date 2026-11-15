@@ -101,7 +101,7 @@ class EhsThermostat(EhsEntity, ClimateEntity, RestoreEntity):
             "heat_demand": c.thermostat.calling,
             "flow_target": r.flow_target if r else None,
             "flow_temperature": c.data.water_out if c.data else None,
-            "adaptive_offset": round(c.adaptive.value, 2),
+            "adaptive_offset": c.adaptive_offset,
         }
 
     async def async_set_temperature(self, **kwargs: Any) -> None:

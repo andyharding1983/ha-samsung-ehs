@@ -2,7 +2,7 @@
 
 Pure logic, no Home Assistant imports, so it can be unit-tested directly.
 
-flow = curve(effective_outdoor) + curve_offset + clamp(gain * (room_target - room_temp))
+flow = curve(effective_outdoor) + learned(effective_outdoor) + clamp(gain * (room_target - room_temp))
 
 * curve: straight line through (outdoor_design, flow_design) and
   (outdoor_mild, flow_mild), clamped to [flow_min, flow_max].
@@ -10,7 +10,8 @@ flow = curve(effective_outdoor) + curve_offset + clamp(gain * (room_target - roo
   forecast over the next N hours, so the house starts warming up before a
   cold snap arrives (and backs off before a warm spell). This compensates
   for the thermal lag of underfloor heating.
-* curve_offset: slow adaptive (integral) correction learned by control.py.
+* learned: blend of the corrections learned at each curve end (control.py),
+  so learning can change the slope as well as the level.
 * room influence: proportional correction from a reference room sensor.
 """
 
@@ -49,7 +50,8 @@ class WcResult:
     effective_outdoor: float
     forecast_mean: float | None
     heating_needed: bool
-    limited: int = 0  # +1 held at flow_max, -1 held at flow_min, 0 free
+    limited: int = 0
+    design_weight: float = 0.5  # share of the cold curve end at effective_outdoor  # +1 held at flow_max, -1 held at flow_min, 0 free
 
 
 def _clamp(val: float, lo: float, hi: float) -> float:
@@ -85,6 +87,14 @@ def room_offset(p: WcParams, room_temp: float | None) -> float:
     return round(_clamp(off, -p.room_max_offset, p.room_max_offset), 2)
 
 
+def design_weight(p: WcParams, eff_outdoor: float) -> float:
+    """Share of the cold (design) curve end at this outdoor temperature."""
+    span = p.outdoor_mild - p.outdoor_design
+    if span <= 0:
+        return 0.5
+    return max(0.0, min(1.0, (p.outdoor_mild - eff_outdoor) / span))
+
+
 def round_half(val: float) -> float:
     """Round to the nearest 0.5 K to keep setpoint writes infrequent."""
     return round(val * 2) / 2
@@ -95,19 +105,28 @@ def compute(
     outdoor_now: float,
     forecast: list[float] | None = None,
     room_temp: float | None = None,
-    curve_offset: float = 0.0,
+    offset_design: float = 0.0,
+    offset_mild: float = 0.0,
 ) -> WcResult:
-    """Calculate the flow temperature target."""
+    """Calculate the flow temperature target.
+
+    offset_design/offset_mild are learned corrections at each end of the
+    curve; between the ends they are blended linearly, beyond them the end
+    value is held.
+    """
     eff, fmean_ = effective_outdoor(p, outdoor_now, forecast)
+    w_d = design_weight(p, eff)
+    curve_offset = w_d * offset_design + (1 - w_d) * offset_mild
     if eff >= p.heating_cutoff:
         return WcResult(
             flow_target=round_half(p.flow_min),
             curve_flow=p.flow_min,
             room_offset=0.0,
-            curve_offset=curve_offset,
+            curve_offset=round(curve_offset, 2),
             effective_outdoor=eff,
             forecast_mean=fmean_,
             heating_needed=False,
+            design_weight=w_d,
         )
     base = curve_flow(p, eff)
     off = room_offset(p, room_temp)
@@ -123,4 +142,5 @@ def compute(
         forecast_mean=fmean_,
         heating_needed=True,
         limited=limited,
+        design_weight=w_d,
     )

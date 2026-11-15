@@ -15,11 +15,12 @@ No cloud, no SmartThings.
 |---|---|
 | Climate | Room thermostat: Heat/Off and room target temperature |
 | Water heater | Hot water on/off, Eco / Standard / Power / Force, tank target (optional, for heating-only systems) |
-| Sensor | Flow, return, ΔT, hot water tank, outdoor temp, flow rate, compressor frequency, heat output, COP (instant / today / lifetime), heat energy, flow target, adaptive curve offset, error codes |
+| Sensor | Flow, return, ΔT, hot water tank, outdoor temp, flow rate, compressor frequency, heat output, COP (instant / today / lifetime), heat energy, flow target, learned curve offset, error codes |
 | Binary sensor | Heat demand, defrost, compressor running, problem |
 | Switch | Quiet mode, away mode |
 | Select | Heat emitter type: underfloor or radiators, which applies sensible presets |
-| Number | Heating curve, thermostat and adaptive tuning |
+| Number | Heating curve, thermostat and learning tuning |
+| Button | Apply learned curve, reset curve learning |
 
 📖 **[Full entity reference](docs/entities.md)**: every entity, attribute and setting explained, including
 [flow target vs flow setpoint](docs/entities.md#flow-target-vs-flow-setpoint).
@@ -81,10 +82,11 @@ flow_setpoint     = clamp(curve_flow + adaptive_offset + room_offset, min flow, 
   spell. This matters for slow systems such as underfloor heating. Set the weight to `0` to disable it.
 * **Room influence** reacts straight away to the room error. A gain of 3 means 1 °C below target
   raises the flow by 3 °C.
-* The **adaptive offset** learns slowly. While space heating runs (not during defrost or hot water), it
-  integrates the room error and shifts the whole curve, so the room settles on target rather than just
-  short of it. It won't wind up while the flow is already held at its min/max. It survives restarts.
-  Once it's stable, you can fold it into the curve points.
+* The **learned curve** adapts slowly. While space heating runs (not during defrost or hot water), the
+  room error is learned separately at the **cold and mild ends of the curve**, so the curve's slope
+  corrects itself as well as its level, and the room settles on target in all weathers. It won't wind
+  up while the flow is held at its min/max, and it survives restarts. Press **Apply learned curve** to
+  copy what it has learned into the curve points.
 * **Min/max flow temperature** are the hard limits on the result. The curve itself keeps going in cold
   weather. Choose your **heat emitter type** (underfloor 25–45 °C, radiators 30–55 °C) to set sensible
   limits, curve and learning speed, then fine-tune.
@@ -110,10 +112,10 @@ diagnostic sensor is the value the unit is actually using. See
 ### Tuning tips
 
 1. Get the curve roughly right. If the heat pump keeps pausing on overshoot, the curve is too high.
-   If the adaptive offset keeps climbing, it is too low.
+   If the learned offset keeps climbing, it is too low.
 2. Lower the flow temperatures until the house *just* holds temperature. Lower flow means higher COP,
    and long steady runs beat on/off cycling.
-3. Fold a stable adaptive offset into the curve points from time to time.
+3. Once the learned offsets have settled over a few weeks of varied weather, press **Apply learned curve**.
 
 ## COP
 

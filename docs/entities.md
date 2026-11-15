@@ -12,7 +12,7 @@ device, the IDs follow the new name.
 * [Binary sensors](#binary-sensors)
 * [Switches](#switches)
 * [Select: heat emitter type](#select-heat-emitter-type)
-* [Numbers: tuning](#numbers-tuning)
+* [Numbers and buttons: tuning](#numbers-and-buttons-tuning)
 * [Diagnostic entities](#diagnostic-entities)
 
 ---
@@ -24,7 +24,7 @@ device, the IDs follow the new name.
  outdoor temp ─────┼─► effective outdoor ─► heating curve ─┐
                    │                                       ├─► Flow target ──(write)──► Flow setpoint (on the unit)
  room temp ────────┼─► room offset (instant) ──────────────┤                                   │
-                   └─► adaptive offset (slow, learned) ────┘                                   ▼
+                   └─► learned curve offset (slow) ────────┘                                   ▼
                                                                                     heat pump heats water to it
  room temp vs target ─► thermostat ─► Heat demand ─(write on/off)─► unit space heating on/off
 ```
@@ -32,9 +32,9 @@ device, the IDs follow the new name.
 On every poll (15 s by default) Home Assistant:
 
 1. **Reads** the unit.
-2. **Updates the adaptive offset** from the room error. This only happens while space heating is actually running:
+2. **Updates the learned curve offsets** at each end of the curve from the room error. This only happens while space heating is actually running:
    not paused, not defrosting and not heating the hot water cylinder.
-3. **Calculates the Flow target** from the curve, the adaptive offset and the room offset.
+3. **Calculates the Flow target** from the curve, the learned offset and the room offset.
 4. **Runs the thermostat:** it pauses at *target + overshoot* and resumes at *target*, subject to the
    minimum on/off times.
 5. **Switches space heating** on or off at the unit if the thermostat state changed.
@@ -90,7 +90,7 @@ Target range 5–28 °C in 0.5 °C steps. The mode and target are restored after
 | `heat_demand` | `true` while the thermostat is calling for heat. Same as the *Heat demand* binary sensor. |
 | `flow_target` | Current Flow target (°C), see above |
 | `flow_temperature` | Actual flow temperature leaving the heat pump (°C) |
-| `adaptive_offset` | Current learned curve offset (K), see *Adaptive curve offset* |
+| `adaptive_offset` | Learned curve offset applied right now (K), see *Learned curve offset* |
 
 ---
 
@@ -141,9 +141,9 @@ show how it was worked out:
 | `effective_outdoor` | Outdoor temperature used by the curve: a blend of the current outdoor temperature and the forecast mean, weighted by *Forecast weight* (°C) |
 | `forecast_mean` | Mean forecast temperature over *Forecast look-ahead* hours (°C). `null` if no weather entity is configured or no forecast is available. |
 | `curve_flow` | Flow temperature from the heating curve alone at `effective_outdoor` (°C) |
-| `adaptive_offset` | Slow learned correction added to the curve (K) |
+| `adaptive_offset` | Learned correction applied at `effective_outdoor` (K), see *Learned curve offset* |
 | `room_offset` | Instant room correction = *Room influence gain* × (target − room), limited to ± *Room influence limit* (K) |
-| `limited` | `1` when the result is held at the maximum flow temperature, `-1` at the minimum, `0` otherwise. While it is held, the adaptive offset doesn't wind up further in that direction. |
+| `limited` | `1` when the result is held at the maximum flow temperature, `-1` at the minimum, `0` otherwise. While it is held, curve learning doesn't wind up further in that direction. |
 | `heating_needed` | `false` when `effective_outdoor` is at or above the *Heating cut-off*. Heating then stays off. |
 | `heat_demand` | `true` while the thermostat is calling for heat |
 | `last_write` | When a flow setpoint was last written to the unit (UTC). `null` since startup if nothing has been written yet. |
@@ -151,21 +151,43 @@ show how it was worked out:
 The state = `curve_flow` + `adaptive_offset` + `room_offset`, limited to the min/max flow temperature and
 rounded to 0.5 °C. Above the cut-off it equals the minimum flow temperature.
 
-### Adaptive curve offset
+### Learned curve offset
 
-`sensor.samsung_ehs_adaptive_curve_offset` (K): a slow, self-learning shift of the whole heating curve.
+`sensor.samsung_ehs_learned_curve_offset` (K): the self-learned correction to the heating curve that is
+being applied **right now**, at today's effective outdoor temperature.
 
-While space heating runs (not defrosting and not diverted to the hot water cylinder), it changes by
-*Adaptive learning rate* × (target − room) per hour. The underfloor default of 0.25 means 1 °C too cold for an
-hour adds 0.25 K. It is limited to ± *Adaptive offset limit*. It doesn't learn while heating is paused or off,
-or while the room sensor is unavailable. The value is saved and survives restarts.
+The integration learns a separate correction for **each end of the curve**, the cold (design) end and the
+mild end, so both the level and the **slope** of the curve can change:
 
-**Anti-windup:** if the flow target is already held at the *maximum* flow temperature, the offset won't learn
-any further upwards. Raising it would change nothing now, and would only cause an overshoot once the weather
+```
+learned offset = w · design_end_offset + (1 − w) · mild_end_offset
+w = 1 at the design outdoor temperature, 0 at the mild one, linear in between (held beyond the ends)
+```
+
+While space heating runs (not defrosting and not diverted to the hot water cylinder), the room error is
+credited to the two ends in proportion to `w`. Cold days mainly teach the cold end, and mild days the
+mild end. The learning speed is the same everywhere: the offset applied at the current outdoor
+temperature changes by *Adaptive learning rate* × (target − room) per hour. The underfloor default of
+0.25 means 1 °C too cold for an hour adds 0.25 K. Each end is limited to ± *Adaptive offset limit*.
+Nothing is learned while heating is paused or off, above the heating cut-off, or while the room sensor
+is unavailable. The values are saved and survive restarts.
+
+**Anti-windup:** if the flow target is already held at the *maximum* flow temperature, it won't learn any
+further upwards. Raising it would change nothing now, and would only cause an overshoot once the weather
 warms up. The same applies downwards at the *minimum*. It can always learn back towards zero.
 
-It's useful for tuning. If it settles at, say, +2 K, your curve is about 2 °C too low. Raise both curve
-flow points by 2 °C and the offset will drift back towards 0.
+| Attribute | Meaning |
+|---|---|
+| `design_end_offset` | Learned correction at the cold end of the curve (K) |
+| `mild_end_offset` | Learned correction at the mild end of the curve (K) |
+| `learned_flow_at_design` | Curve flow at the design temperature including learning (°C). This is what *Apply learned curve* would set. |
+| `learned_flow_at_mild` | The same at the mild temperature (°C) |
+| `design_weight` | `w` at today's effective outdoor temperature (0–1) |
+
+**Folding it in:** once the offsets have settled, press **Apply learned curve**. It copies
+`learned_flow_at_design` and `learned_flow_at_mild` into the two curve points and resets both offsets to
+zero, so the heat pump behaves exactly the same but the curve numbers now show what was learned.
+**Reset curve learning** throws the learned offsets away.
 
 ### Heat output, COP and energy
 
@@ -225,7 +247,7 @@ respond in minutes and need higher flow temperatures.
 
 ---
 
-## Numbers: tuning
+## Numbers and buttons: tuning
 
 All of these are under the device's **Configuration** section and are restored after a restart. Changing any
 of them recalculates and, if heating is on, writes the new flow temperature straight away.
@@ -234,7 +256,7 @@ of them recalculates and, if heating is on, writes the new flow temperature stra
 
 The curve is a straight line through two points, (design outdoor, design flow) and (mild outdoor, mild flow).
 It **keeps going past those points**: with the underfloor defaults it asks for about 46 °C at −10 °C. The room
-and adaptive offsets are added on top. The **minimum and maximum flow temperatures are the hard limits on
+and learned offsets are added on top. The **minimum and maximum flow temperatures are the hard limits on
 the final result**, whatever produced it. Set the maximum for what your heat emitters can safely take.
 
 | Entity | Default | Meaning |
@@ -263,12 +285,17 @@ the final result**, whatever produced it. Set the maximum for what your heat emi
 | `number.samsung_ehs_room_influence_gain` | 3 | K of flow added per K the room is below target (and removed when above) |
 | `number.samsung_ehs_room_influence_limit` | 5 K | Maximum room correction either way |
 
-### Adaptive offset (slow)
+### Curve learning (slow)
 
 | Entity | Default | Meaning |
 |---|---|---|
 | `number.samsung_ehs_adaptive_learning_rate` | 0.25 ¹ | K per hour per K of room error. 0 turns learning off and holds the current offset. |
-| `number.samsung_ehs_adaptive_offset_limit` | 5 K | Maximum learned offset either way |
+| `number.samsung_ehs_adaptive_offset_limit` | 5 K | Maximum learned offset at each curve end, either way |
+
+| Button | Meaning |
+|---|---|
+| `button.samsung_ehs_apply_learned_curve` | Copy the learned offsets into the two curve points and reset them to zero |
+| `button.samsung_ehs_reset_curve_learning` | Discard the learned offsets |
 
 ### Thermostat
 

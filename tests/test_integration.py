@@ -238,9 +238,9 @@ async def test_no_learning_during_hot_water(hass: HomeAssistant, client) -> None
     hass.states.async_set("sensor.room", "19.0", {"unit_of_measurement": "°C"})
     await _setup(hass, {"room_sensor": "sensor.room"})
     c = hass.config_entries.async_entries(DOMAIN)[0].runtime_data
-    c._last_control -= 3600  # pretend an hour passed
+    c._last_control -= 1800  # pretend half an hour passed
     await c.async_control()
-    assert c.adaptive.value == 0.0
+    assert (c.adaptive.design, c.adaptive.mild) == (0.0, 0.0)
 
 
 async def test_heating_only_hides_hot_water(hass: HomeAssistant, client) -> None:
@@ -267,3 +267,32 @@ async def test_config_flow_heating_only(hass: HomeAssistant, client) -> None:
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == DATA
     assert result["options"] == {"hot_water": False}
+
+
+async def test_curve_learning_and_apply(hass: HomeAssistant, client) -> None:
+    hass.states.async_set("sensor.room", "20.0", {"unit_of_measurement": "°C"})
+    await _setup(hass, {"room_sensor": "sensor.room"})
+    c = hass.config_entries.async_entries(DOMAIN)[0].runtime_data
+    c._last_control -= 1800  # half an hour 1 K cold at 5 C outdoor
+    await c.async_control()
+    # 5 C on -3..15: design weight 10/18; learning split between both ends
+    assert c.adaptive.design > c.adaptive.mild > 0
+    applied_offset = c.wc_result.curve_offset
+    assert applied_offset == pytest.approx(0.125, abs=0.01)  # rate 0.25 * 1 K * 0.5 h
+
+    sensor = hass.states.get("sensor.samsung_ehs_learned_curve_offset")
+    assert sensor.attributes["learned_flow_at_design"] > 40.0
+
+    d, m = c.adaptive.design, c.adaptive.mild
+    await hass.services.async_call(
+        "button", "press",
+        {"entity_id": "button.samsung_ehs_apply_learned_curve"}, blocking=True,
+    )
+    assert c.adaptive.design == pytest.approx(0.0, abs=1e-3)
+    assert c.adaptive.mild == pytest.approx(0.0, abs=1e-3)
+    assert hass.states.get(
+        "number.samsung_ehs_curve_flow_at_design_temperature"
+    ).state == str(round(40.0 + d, 1))
+    assert hass.states.get(
+        "number.samsung_ehs_curve_flow_at_mild_temperature"
+    ).state == str(round(25.0 + m, 1))

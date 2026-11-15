@@ -59,3 +59,12 @@ def test_limited_flag():
     assert W.compute(p, -10.0, None, 18.0).limited == 1
     assert W.compute(p, 5.0, None, 21.0).limited == 0
     assert W.compute(W.WcParams(flow_min=30.0), 14.0, None, 23.0).limited == -1
+
+
+def test_end_offsets_blend_and_hold():
+    p = W.WcParams()  # -3 -> 45, 15 -> 25
+    assert W.compute(p, -3.0, offset_design=2.0, offset_mild=-1.0).curve_offset == 2.0
+    assert W.compute(p, 15.0 - 0.01, offset_design=2.0, offset_mild=-1.0).curve_offset == -1.0
+    assert W.compute(p, 6.0, offset_design=2.0, offset_mild=-1.0).curve_offset == 0.5
+    assert W.compute(p, -15.0, offset_design=2.0, offset_mild=-1.0).curve_offset == 2.0  # held
+    assert W.compute(p, 6.0).design_weight == 0.5

@@ -44,7 +44,7 @@ from .const import (
     WC_ROOM_TARGET,
     WC_WRITE_DEADBAND,
 )
-from .control import AdaptiveOffset, Thermostat
+from .control import AdaptiveCurve, Thermostat
 from .cop import EnergyTracker, heat_output_w, instant_cop
 from .weather_comp import WcParams, WcResult, compute
 
@@ -116,7 +116,7 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         self.wc_result: WcResult | None = None
         self.wc_last_write: datetime | None = None
         self.thermostat = Thermostat()
-        self.adaptive = AdaptiveOffset()
+        self.adaptive = AdaptiveCurve()
         self._thermostat_synced = False
         # Set once entities have restored target/params, so we never act
         # on defaults right after a restart.
@@ -143,12 +143,21 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         if "energy" not in stored:  # pre-0.2 layout: energy at top level
             stored = {"energy": stored}
         self.energy = EnergyTracker.from_dict(stored.get("energy"))
-        self.adaptive.value = float(stored.get("adaptive_offset", 0.0))
+        if "adaptive" in stored:
+            self.adaptive.design = float(stored["adaptive"].get("design", 0.0))
+            self.adaptive.mild = float(stored["adaptive"].get("mild", 0.0))
+        else:  # single offset from earlier versions applies to both ends
+            self.adaptive.design = self.adaptive.mild = float(
+                stored.get("adaptive_offset", 0.0)
+            )
         # Run the control loop after every successful poll.
         self._unsub_listener = self.async_add_listener(self._schedule_control)
 
     def _store_data(self) -> dict[str, Any]:
-        return {"energy": self.energy.as_dict(), "adaptive_offset": self.adaptive.value}
+        return {
+            "energy": self.energy.as_dict(),
+            "adaptive": {"design": self.adaptive.design, "mild": self.adaptive.mild},
+        }
 
     def _schedule_control(self) -> None:
         if self.ready and self.data is not None and not self._control_lock.locked():
@@ -296,6 +305,27 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         await self.async_control(force_flow=True)
 
     @property
+    def adaptive_offset(self) -> float:
+        """Learned offset currently applied (at today's effective outdoor)."""
+        if self.wc_result is not None:
+            return self.wc_result.curve_offset
+        return self.adaptive.offset_at(0.5)
+
+    async def async_apply_learned_curve(self) -> None:
+        """Fold the learned end offsets into the curve points and reset them."""
+        p = self.wc_params
+        p["wc_flow_design"] = round(p["wc_flow_design"] + self.adaptive.design, 1)
+        p["wc_flow_mild"] = round(p["wc_flow_mild"] + self.adaptive.mild, 1)
+        self.adaptive.reset()
+        self._store.async_delay_save(self._store_data, 1)
+        await self.async_control(force_flow=True)
+
+    async def async_reset_learning(self) -> None:
+        self.adaptive.reset()
+        self._store.async_delay_save(self._store_data, 1)
+        await self.async_control(force_flow=True)
+
+    @property
     def room_target(self) -> float:
         return self.wc_params[WC_ROOM_TARGET]
 
@@ -340,7 +370,12 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         )
         prev = self.wc_result
         self.adaptive.update(
-            dt_s, room, target, learning=running, limited=prev.limited if prev else 0
+            dt_s,
+            room,
+            target,
+            w_design=prev.design_weight if prev and prev.heating_needed else None,
+            learning=running,
+            limited=prev.limited if prev else 0,
         )
 
         outdoor = self.outdoor_temp()
@@ -355,7 +390,8 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
             )
             result = compute(
                 p, outdoor, self._forecast_window(p.forecast_hours), room,
-                curve_offset=self.adaptive.value,
+                offset_design=self.adaptive.design,
+                offset_mild=self.adaptive.mild,
             )
         self.wc_result = result
         heating_needed = result.heating_needed if result else True

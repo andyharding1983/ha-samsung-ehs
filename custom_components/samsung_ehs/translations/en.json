@@ -108,7 +108,7 @@
         "name": "Indoor unit error code"
       },
       "adaptive_offset": {
-        "name": "Adaptive curve offset"
+        "name": "Learned curve offset"
       }
     },
     "binary_sensor": {
@@ -207,6 +207,14 @@
           "underfloor": "Underfloor heating",
           "radiators": "Radiators"
         }
+      }
+    },
+    "button": {
+      "apply_learned_curve": {
+        "name": "Apply learned curve"
+      },
+      "reset_learning": {
+        "name": "Reset curve learning"
       }
     }
   }
