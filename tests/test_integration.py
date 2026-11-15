@@ -151,3 +151,17 @@ async def test_unload(hass: HomeAssistant, client) -> None:
     entry = await _setup(hass)
     assert await hass.config_entries.async_unload(entry.entry_id)
     client.close.assert_called_once()
+
+
+async def test_simulator_entry(hass: HomeAssistant) -> None:
+    hass.states.async_set("weather.home", "cloudy", {"temperature": 4.2})
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={**DATA, "port": "simulator"},
+        options={"weather_entity": "weather.home"},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.samsung_ehs_outdoor_temperature").state == "4.2"
+    assert hass.states.get("climate.samsung_ehs").state == "heat"

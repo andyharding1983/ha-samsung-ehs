@@ -17,6 +17,7 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .api import EhsClient, EhsConnectionError
+from .simulator import SIM_PORT
 from .const import (
     CONF_BAUDRATE,
     CONF_EXTENDED,
@@ -58,6 +59,8 @@ USER_SCHEMA = vol.Schema(
 
 
 async def _validate(data: dict[str, Any]) -> None:
+    if data[CONF_PORT] == SIM_PORT:
+        return
     client = EhsClient(
         data[CONF_PORT], data[CONF_SLAVE], data[CONF_BAUDRATE], data[CONF_INDOOR_INDEX]
     )

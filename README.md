@@ -49,6 +49,14 @@ Then open **Configure** on the integration to set:
 | Outdoor temperature sensor override | Use instead of the heat pump's own outdoor sensor |
 | Read extended registers | Outdoor temperature, flow rate and compressor frequency (see below) |
 
+## Trying it without hardware
+
+Enter `simulator` as the serial port. A simulated heat pump follows the outdoor temperature
+from your chosen weather entity (or outdoor sensor override). It responds to setpoint writes,
+reheats hot water and defrosts in cold weather. If no power sensor is configured, it also
+supplies its own electrical power reading, so COP works. This is useful for trying out
+weather compensation settings and dashboards before you connect the real unit.
+
 ## Weather compensation
 
 When the **Weather compensation** switch is on (and the heat pump is on in Heat mode), Home Assistant

@@ -135,6 +135,9 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         flow = (data.extended or {}).get("flow_rate")
         self.heat_w = heat_output_w(flow, data.delta_t)
         self.power_w = _float_state(self.hass, self.power_sensor)
+        if self.power_w is None and not self.power_sensor:
+            # Simulator provides its own electrical power.
+            self.power_w = (data.extended or {}).get("sim_power")
         self.cop = instant_cop(self.heat_w, self.power_w)
         now = dt_util.now()
         self.energy.update(now, self.heat_w, self.power_w)

@@ -11,7 +11,7 @@
           "indoor_index": "Indoor unit index"
         },
         "data_description": {
-          "port": "For example /dev/ttyUSB0 or /dev/serial/by-id/…",
+          "port": "For example /dev/ttyUSB0 or /dev/serial/by-id/…, or 'simulator' to try it without hardware.",
           "slave": "Set by the DIP and rotary switches on the MIM-B19N (1–247).",
           "indoor_index": "0 for a single EHS unit."
         }
