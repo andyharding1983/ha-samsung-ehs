@@ -26,7 +26,7 @@ CONF_EXTENDED = "extended_registers"
 CONF_WC_INTERVAL = "wc_interval"
 
 DEFAULT_SCAN_INTERVAL = 15  # seconds
-DEFAULT_WC_INTERVAL = 300  # seconds between weather-compensation writes
+DEFAULT_WC_INTERVAL = 300  # minimum seconds between flow setpoint writes
 DEFAULT_EXTENDED = True
 
 # Weather compensation parameter keys (number entities, restored across restarts)
@@ -41,7 +41,12 @@ WC_FORECAST_HOURS = "wc_forecast_hours"
 WC_FORECAST_WEIGHT = "wc_forecast_weight"  # 0..1
 WC_FLOW_MIN = "wc_flow_min"
 WC_FLOW_MAX = "wc_flow_max"
-WC_HEATING_CUTOFF = "wc_heating_cutoff"  # effective outdoor temp above which flow = min
+WC_HEATING_CUTOFF = "wc_heating_cutoff"  # effective outdoor temp above which heating stops
+WC_HYSTERESIS = "wc_hysteresis"  # K above target at which heating pauses
+WC_MIN_ON = "wc_min_on"  # minutes; 20 => max 3 starts per hour
+WC_MIN_OFF = "wc_min_off"  # minutes
+WC_ADAPT_RATE = "wc_adapt_rate"  # K curve offset per hour per K room error
+WC_ADAPT_LIMIT = "wc_adapt_limit"  # K
 
 WC_DEFAULTS: dict[str, float] = {
     WC_OUTDOOR_DESIGN: -3.0,
@@ -56,6 +61,11 @@ WC_DEFAULTS: dict[str, float] = {
     WC_FLOW_MIN: 20.0,
     WC_FLOW_MAX: 55.0,
     WC_HEATING_CUTOFF: 17.0,
+    WC_HYSTERESIS: 1.0,
+    WC_MIN_ON: 20.0,
+    WC_MIN_OFF: 0.0,
+    WC_ADAPT_RATE: 0.5,
+    WC_ADAPT_LIMIT: 5.0,
 }
 
 # Minimum change (K) before a new flow setpoint is written to the unit,

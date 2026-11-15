@@ -5,7 +5,7 @@
 
 Local control of Samsung EHS air-to-water heat pumps through
 Samsung's **MIM-B19N** Modbus interface module, with Home Assistant-side
-**weather compensation** (forecast-aware, with room influence) and **COP tracking**.
+**room thermostat with weather compensation** (forecast-aware, room influence, self-learning curve) and **COP tracking**.
 
 No cloud, no SmartThings.
 
@@ -13,12 +13,12 @@ No cloud, no SmartThings.
 
 | Platform | Entities |
 |---|---|
-| Climate | Space heating/cooling on/off, mode, flow setpoint — or room target when weather compensation is on |
+| Climate | Room thermostat: Heat/Off and room target temperature |
 | Water heater | Hot water on/off, Eco / Standard / Power / Force, tank target |
-| Sensor | Flow, return, ΔT, flow setpoint, hot water tank, outdoor temp, flow rate, compressor frequency, heat output, COP (instant / today / lifetime), heat energy, WC target, error codes |
-| Binary sensor | Defrost, compressor running, problem |
-| Switch | Quiet mode, away mode, weather compensation |
-| Number | Heating curve and weather compensation tuning |
+| Sensor | Flow, return, ΔT, flow setpoint, hot water tank, outdoor temp, flow rate, compressor frequency, heat output, COP (instant / today / lifetime), heat energy, flow target, adaptive curve offset, error codes |
+| Binary sensor | Heat demand, defrost, compressor running, problem |
+| Switch | Quiet mode, away mode |
+| Number | Heating curve, thermostat and adaptive tuning |
 
 ## Hardware
 
@@ -57,38 +57,53 @@ reheats hot water and defrosts in cold weather. If no power sensor is configured
 supplies its own electrical power reading, so COP works. This is useful for trying out
 weather compensation settings and dashboards before you connect the real unit.
 
-## Weather compensation
+## How heating is controlled
 
-When the **Weather compensation** switch is on (and the heat pump is on in Heat mode), Home Assistant
-calculates the flow temperature and writes it to the unit. Turn off the Samsung controller's own
-water-law (WL) setting so the two don't fight.
+Home Assistant always controls the heat pump. The climate entity works like a normal room thermostat.
+Set a room target and Home Assistant does the rest. Turn off the Samsung controller's own water-law
+(WL) setting so the two don't fight.
+
+### Weather-compensated flow temperature
 
 ```
 effective_outdoor = (1 − w) · outdoor_now + w · mean(forecast over next N hours)
 curve_flow        = straight line through (design outdoor, design flow) and (mild outdoor, mild flow)
 room_offset       = clamp(gain · (room_target − room_temp), ±limit)
-flow_setpoint     = clamp(curve_flow + room_offset, min flow, max flow), rounded to 0.5 °C
+flow_setpoint     = clamp(curve_flow + adaptive_offset + room_offset, min flow, max flow), rounded to 0.5 °C
 ```
 
 * **Forecast blending** starts warming the house before a cold snap and eases off before a mild
   spell. This matters for slow systems such as underfloor heating. Set the weight to `0` to disable it.
-* **Room influence** corrects the curve using a reference room. A gain of 3 means
-  1 °C below target raises the flow by 3 °C.
-* Above the **heating cut-off** effective outdoor temperature, the flow is held at the minimum.
-* A new setpoint is only written when it changes by ≥ 0.5 °C, at most every *WC interval*
-  (default 5 min), to keep bus traffic and EEPROM writes low.
+* **Room influence** reacts straight away to the room error. A gain of 3 means 1 °C below target
+  raises the flow by 3 °C.
+* The **adaptive offset** learns slowly. While the heat pump runs, it integrates the room error
+  (default 0.5 K per hour per K of error, limited to ±5 K) and shifts the whole curve, so the room
+  settles on target rather than just short of it. It survives restarts. Once it's stable, you can
+  fold it into the curve points.
+* A new setpoint is only written when it changes by ≥ 0.5 °C, and at most every 5 min
+  (configurable), to keep bus traffic and EEPROM writes low.
 
-While weather compensation is on, the climate entity's target is the **room target**. With it off,
-the climate entity's target is the **flow setpoint**, written directly.
+### Thermostat on/off
 
-The `Weather compensation target` sensor exposes the working: curve flow, room offset, effective
-outdoor temperature, forecast mean and last write.
+* When the room reaches **target + overshoot** (default 1 °C), space heating is switched off at the unit.
+* When the room falls back to **target**, it is switched on again.
+* Above the **heating cut-off** effective outdoor temperature, heating stays off.
+* **Minimum on time** (default 20 min) protects the compressor. With no minimum off time, that
+  limits the unit to **3 starts per hour**. An optional minimum off time is also available.
+* If the room sensor becomes unavailable, heating is never paused. It runs on weather
+  compensation alone until the sensor comes back.
+* Hot water is controlled separately and keeps working while space heating is paused.
+
+The `Flow target` sensor shows the working: curve flow, adaptive offset, room offset,
+effective outdoor temperature, forecast mean, heat demand and last write.
 
 ### Tuning tips
 
-1. Start with room gain `0` and tune the curve until rooms are roughly right in steady weather.
-2. Lower the flow temperatures until the house *just* holds temperature. Lower flow means higher COP.
-3. Then add a room gain of 1–3 and a limit of 3–5 K.
+1. Get the curve roughly right. If the heat pump keeps pausing on overshoot, the curve is too high.
+   If the adaptive offset keeps climbing, it is too low.
+2. Lower the flow temperatures until the house *just* holds temperature. Lower flow means higher COP,
+   and long steady runs beat on/off cycling.
+3. Fold a stable adaptive offset into the curve points from time to time.
 
 ## COP
 

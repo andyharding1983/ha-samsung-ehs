@@ -2,7 +2,7 @@
 
 Pure logic, no Home Assistant imports, so it can be unit-tested directly.
 
-flow = curve(effective_outdoor) + clamp(gain * (room_target - room_temp))
+flow = curve(effective_outdoor) + curve_offset + clamp(gain * (room_target - room_temp))
 
 * curve: straight line through (outdoor_design, flow_design) and
   (outdoor_mild, flow_mild), clamped to [flow_min, flow_max].
@@ -10,6 +10,7 @@ flow = curve(effective_outdoor) + clamp(gain * (room_target - room_temp))
   forecast over the next N hours, so the house starts warming up before a
   cold snap arrives (and backs off before a warm spell). This compensates
   for the thermal lag of underfloor heating.
+* curve_offset: slow adaptive (integral) correction learned by control.py.
 * room influence: proportional correction from a reference room sensor.
 """
 
@@ -44,6 +45,7 @@ class WcResult:
     flow_target: float
     curve_flow: float
     room_offset: float
+    curve_offset: float
     effective_outdoor: float
     forecast_mean: float | None
     heating_needed: bool
@@ -92,6 +94,7 @@ def compute(
     outdoor_now: float,
     forecast: list[float] | None = None,
     room_temp: float | None = None,
+    curve_offset: float = 0.0,
 ) -> WcResult:
     """Calculate the flow temperature target."""
     eff, fmean_ = effective_outdoor(p, outdoor_now, forecast)
@@ -100,17 +103,19 @@ def compute(
             flow_target=round_half(p.flow_min),
             curve_flow=p.flow_min,
             room_offset=0.0,
+            curve_offset=curve_offset,
             effective_outdoor=eff,
             forecast_mean=fmean_,
             heating_needed=False,
         )
     base = curve_flow(p, eff)
     off = room_offset(p, room_temp)
-    flow = _clamp(base + off, p.flow_min, p.flow_max)
+    flow = _clamp(base + curve_offset + off, p.flow_min, p.flow_max)
     return WcResult(
         flow_target=round_half(flow),
         curve_flow=round(base, 2),
         room_offset=off,
+        curve_offset=round(curve_offset, 2),
         effective_outdoor=eff,
         forecast_mean=fmean_,
         heating_needed=True,

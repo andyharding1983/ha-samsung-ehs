@@ -18,6 +18,7 @@ def _load(name: str):
 registers = _load("registers")
 weather_comp = _load("weather_comp")
 cop = _load("cop")
+control = _load("control")
 
 
 try:  # Home Assistant test harness is optional for the pure-logic tests

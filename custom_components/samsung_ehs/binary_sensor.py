@@ -51,7 +51,9 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data
-    async_add_entities(EhsBinarySensor(coordinator, d) for d in BINARY_SENSORS)
+    async_add_entities(
+        [*(EhsBinarySensor(coordinator, d) for d in BINARY_SENSORS), HeatDemand(coordinator)]
+    )
 
 
 class EhsBinarySensor(EhsEntity, BinarySensorEntity):
@@ -66,3 +68,17 @@ class EhsBinarySensor(EhsEntity, BinarySensorEntity):
         if self.coordinator.data is None:
             return None
         return self.entity_description.value_fn(self.coordinator.data)
+
+
+class HeatDemand(EhsEntity, BinarySensorEntity):
+    """On while the room thermostat is calling for heat."""
+
+    _attr_device_class = BinarySensorDeviceClass.HEAT
+
+    def __init__(self, coordinator: EhsCoordinator) -> None:
+        super().__init__(coordinator, "heat_demand")
+
+    @property
+    def is_on(self) -> bool:
+        c = self.coordinator
+        return c.heating_enabled and c.thermostat.calling

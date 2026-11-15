@@ -26,9 +26,13 @@ from .const import (
     WC_HEATING_CUTOFF,
     WC_OUTDOOR_DESIGN,
     WC_OUTDOOR_MILD,
+    WC_ADAPT_LIMIT,
+    WC_ADAPT_RATE,
+    WC_HYSTERESIS,
+    WC_MIN_OFF,
+    WC_MIN_ON,
     WC_ROOM_GAIN,
     WC_ROOM_MAX_OFFSET,
-    WC_ROOM_TARGET,
 )
 from .coordinator import EhsCoordinator
 from .entity import EhsEntity
@@ -39,7 +43,7 @@ class WcNumberDescription(NumberEntityDescription):
     pass
 
 
-def _t(key: str, lo: float, hi: float, step: float = 0.5, cfg: bool = True):
+def _t(key: str, lo: float, hi: float, step: float = 0.5):
     return WcNumberDescription(
         key=key,
         native_min_value=lo,
@@ -48,12 +52,11 @@ def _t(key: str, lo: float, hi: float, step: float = 0.5, cfg: bool = True):
         device_class=NumberDeviceClass.TEMPERATURE,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         mode=NumberMode.BOX,
-        entity_category=EntityCategory.CONFIG if cfg else None,
+        entity_category=EntityCategory.CONFIG,
     )
 
 
 NUMBERS: tuple[WcNumberDescription, ...] = (
-    _t(WC_ROOM_TARGET, 10, 28, cfg=False),
     _t(WC_OUTDOOR_DESIGN, -20, 5),
     _t(WC_FLOW_DESIGN, 25, 55),
     _t(WC_OUTDOOR_MILD, 5, 20),
@@ -93,6 +96,50 @@ NUMBERS: tuple[WcNumberDescription, ...] = (
         native_max_value=1,
         native_step=0.05,
         mode=NumberMode.SLIDER,
+        entity_category=EntityCategory.CONFIG,
+    ),
+    WcNumberDescription(
+        key=WC_HYSTERESIS,
+        native_min_value=0.2,
+        native_max_value=3,
+        native_step=0.1,
+        native_unit_of_measurement=UnitOfTemperature.KELVIN,
+        mode=NumberMode.BOX,
+        entity_category=EntityCategory.CONFIG,
+    ),
+    WcNumberDescription(
+        key=WC_MIN_ON,
+        native_min_value=0,
+        native_max_value=60,
+        native_step=1,
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+        mode=NumberMode.BOX,
+        entity_category=EntityCategory.CONFIG,
+    ),
+    WcNumberDescription(
+        key=WC_MIN_OFF,
+        native_min_value=0,
+        native_max_value=60,
+        native_step=1,
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+        mode=NumberMode.BOX,
+        entity_category=EntityCategory.CONFIG,
+    ),
+    WcNumberDescription(
+        key=WC_ADAPT_RATE,
+        native_min_value=0,
+        native_max_value=2,
+        native_step=0.1,
+        mode=NumberMode.BOX,
+        entity_category=EntityCategory.CONFIG,
+    ),
+    WcNumberDescription(
+        key=WC_ADAPT_LIMIT,
+        native_min_value=0,
+        native_max_value=10,
+        native_step=0.5,
+        native_unit_of_measurement=UnitOfTemperature.KELVIN,
+        mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
     ),
 )

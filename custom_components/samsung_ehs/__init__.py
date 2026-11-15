@@ -55,9 +55,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: EhsConfigEntry) -> bool:
         raise
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    # First calculation once the restored WC entities have pushed their values.
+    # Entities have now restored the room target, on/off and tuning values.
+    coordinator.ready = True
     entry.async_create_background_task(
-        hass, coordinator.async_run_wc(), "samsung_ehs initial weather compensation"
+        hass, coordinator.async_control(force_flow=True), "samsung_ehs initial control"
     )
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     return True

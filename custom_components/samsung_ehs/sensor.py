@@ -51,11 +51,12 @@ def _wc_attrs(c: EhsCoordinator) -> dict[str, Any] | None:
         return None
     return {
         "curve_flow": r.curve_flow,
+        "adaptive_offset": r.curve_offset,
         "room_offset": r.room_offset,
         "effective_outdoor": r.effective_outdoor,
         "forecast_mean": r.forecast_mean,
         "heating_needed": r.heating_needed,
-        "enabled": c.wc_enabled,
+        "heat_demand": c.thermostat.calling,
         "last_write": c.wc_last_write.isoformat() if c.wc_last_write else None,
     }
 
@@ -141,6 +142,13 @@ SENSORS: tuple[EhsSensorDescription, ...] = (
         **TEMP,
         value_fn=lambda c: c.wc_result.flow_target if c.wc_result else None,
         attrs_fn=_wc_attrs,
+    ),
+    EhsSensorDescription(
+        key="adaptive_offset",
+        native_unit_of_measurement=UnitOfTemperature.KELVIN,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda c: c.adaptive.value,
     ),
     EhsSensorDescription(
         key="outdoor_error",

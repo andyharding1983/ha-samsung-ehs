@@ -1,5 +1,6 @@
 """End-to-end tests against a real Home Assistant core with a mocked bus."""
 
+from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -71,7 +72,8 @@ async def test_config_flow_cannot_connect(hass: HomeAssistant, client) -> None:
 
 async def test_entities(hass: HomeAssistant, client) -> None:
     hass.states.async_set("sensor.hp_power", "1500", {"unit_of_measurement": "W"})
-    await _setup(hass, {"power_sensor": "sensor.hp_power"})
+    hass.states.async_set("sensor.room", "20.0", {"unit_of_measurement": "°C"})
+    await _setup(hass, {"power_sensor": "sensor.hp_power", "room_sensor": "sensor.room"})
 
     assert hass.states.get("sensor.samsung_ehs_flow_temperature").state == "35.0"
     assert hass.states.get("sensor.samsung_ehs_outdoor_temperature").state == "5.0"
@@ -81,71 +83,91 @@ async def test_entities(hass: HomeAssistant, client) -> None:
 
     climate = hass.states.get("climate.samsung_ehs")
     assert climate.state == "heat"
+    assert climate.attributes["hvac_modes"] == ["off", "heat"]
     assert climate.attributes["hvac_action"] == "heating"
-    assert climate.attributes["temperature"] == 35.0  # flow control while WC is off
+    assert climate.attributes["temperature"] == 21.0  # room target
+    assert climate.attributes["current_temperature"] == 20.0
 
     dhw = hass.states.get("water_heater.samsung_ehs_hot_water")
     assert dhw.state == "standard"
     assert dhw.attributes["current_temperature"] == 45.5
+    assert hass.states.get("switch.samsung_ehs_weather_compensation") is None
+
+
+async def test_weather_compensation_always_on(hass: HomeAssistant, client) -> None:
+    hass.states.async_set("sensor.room", "20.0", {"unit_of_measurement": "°C"})
+    await _setup(hass, {"room_sensor": "sensor.room"})
+    # outdoor 5 C on default curve (-3->45, 15->25): 36.1, + room 3*(21-20)=3 -> 39.0
+    client.write_indoor.assert_any_await(R.IU_WATER_OUT_SET, 390)
+    wc = hass.states.get("sensor.samsung_ehs_flow_target")
+    assert float(wc.state) == 39.0
+    assert wc.attributes["room_offset"] == 3.0
+    assert wc.attributes["last_write"] is not None
+
+
+async def test_target_change_rewrites_flow(hass: HomeAssistant, client) -> None:
+    hass.states.async_set("sensor.room", "20.0", {"unit_of_measurement": "°C"})
+    await _setup(hass, {"room_sensor": "sensor.room"})
+    await hass.services.async_call(
+        "climate", "set_temperature",
+        {"entity_id": "climate.samsung_ehs", "temperature": 21.5}, blocking=True,
+    )
+    # room offset now 3*1.5=4.5 -> 36.1+4.5 = 40.6 -> 40.5
+    client.write_indoor.assert_any_await(R.IU_WATER_OUT_SET, 405)
+    assert hass.states.get("climate.samsung_ehs").attributes["temperature"] == 21.5
+
+
+async def test_overshoot_pauses_after_min_on(hass: HomeAssistant, client) -> None:
+    from homeassistant.util import dt as dt_util
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+    from unittest.mock import patch as _patch
+    import time as _time
+
+    hass.states.async_set("sensor.room", "22.2", {"unit_of_measurement": "°C"})
+    await _setup(hass, {"room_sensor": "sensor.room"})
+    # Just started: min on time (20 min) protects the compressor
+    assert not any(c.args == (R.IU_POWER, 0) for c in client.write_indoor.await_args_list)
+
+    later = _time.monotonic() + 21 * 60
+    with _patch("custom_components.samsung_ehs.coordinator.time.monotonic", return_value=later):
+        async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=30))
+        await hass.async_block_till_done()
+    client.write_indoor.assert_any_await(R.IU_POWER, 0)
+    climate = hass.states.get("climate.samsung_ehs")
+    assert climate.state == "heat"
+    assert climate.attributes["hvac_action"] == "idle"
+    assert hass.states.get("binary_sensor.samsung_ehs_heat_demand").state == "off"
+
+
+async def test_paused_unit_restarts_at_target(hass: HomeAssistant, client) -> None:
+    client.read_all.return_value = _snapshot(power=False)
+    hass.states.async_set("sensor.room", "21.0", {"unit_of_measurement": "°C"})
+    await _setup(hass, {"room_sensor": "sensor.room"})
+    client.write_indoor.assert_any_await(R.IU_POWER, 1)
+
+
+async def test_user_off_and_on(hass: HomeAssistant, client) -> None:
+    await _setup(hass)
+    await hass.services.async_call(
+        "climate", "set_hvac_mode",
+        {"entity_id": "climate.samsung_ehs", "hvac_mode": "off"}, blocking=True,
+    )
+    client.write_indoor.assert_any_await(R.IU_POWER, 0)  # overrides min on time
+    assert hass.states.get("climate.samsung_ehs").attributes["hvac_action"] == "off"
 
 
 async def test_controls_write_registers(hass: HomeAssistant, client) -> None:
     await _setup(hass)
-    await hass.services.async_call(
-        "climate", "set_temperature",
-        {"entity_id": "climate.samsung_ehs", "temperature": 40}, blocking=True,
-    )
-    client.write_indoor.assert_any_await(R.IU_WATER_OUT_SET, 400)
-
     await hass.services.async_call(
         "water_heater", "set_operation_mode",
         {"entity_id": "water_heater.samsung_ehs_hot_water", "operation_mode": "eco"},
         blocking=True,
     )
     client.write_indoor.assert_any_await(R.IU_DHW_MODE, int(R.DhwMode.ECO))
-
     await hass.services.async_call(
         "switch", "turn_on", {"entity_id": "switch.samsung_ehs_quiet_mode"}, blocking=True
     )
     client.write_indoor.assert_any_await(R.IU_QUIET, 1)
-
-    await hass.services.async_call(
-        "climate", "set_hvac_mode",
-        {"entity_id": "climate.samsung_ehs", "hvac_mode": "off"}, blocking=True,
-    )
-    client.write_indoor.assert_any_await(R.IU_POWER, 0)
-
-
-async def test_weather_compensation_writes_flow(hass: HomeAssistant, client) -> None:
-    hass.states.async_set("sensor.room", "20.0", {"unit_of_measurement": "°C"})
-    await _setup(hass, {"room_sensor": "sensor.room"})
-    client.write_indoor.reset_mock()
-
-    await hass.services.async_call(
-        "switch", "turn_on",
-        {"entity_id": "switch.samsung_ehs_weather_compensation"}, blocking=True,
-    )
-    # outdoor 5 C on default curve (-3->45, 15->25): 36.1, + room 3*(21-20)=3 -> 39.0
-    client.write_indoor.assert_any_await(R.IU_WATER_OUT_SET, 390)
-    wc = hass.states.get("sensor.samsung_ehs_weather_compensation_target")
-    assert float(wc.state) == 39.0
-    assert wc.attributes["room_offset"] == 3.0
-    assert wc.attributes["last_write"] is not None
-
-    climate = hass.states.get("climate.samsung_ehs")
-    assert climate.attributes["temperature"] == 21.0  # now the room target
-    assert climate.attributes["current_temperature"] == 20.0
-
-
-async def test_wc_skips_when_heating_off(hass: HomeAssistant, client) -> None:
-    client.read_all.return_value = _snapshot(power=False)
-    await _setup(hass)
-    client.write_indoor.reset_mock()
-    await hass.services.async_call(
-        "switch", "turn_on",
-        {"entity_id": "switch.samsung_ehs_weather_compensation"}, blocking=True,
-    )
-    client.write_indoor.assert_not_awaited()
 
 
 async def test_unload(hass: HomeAssistant, client) -> None:
@@ -167,7 +189,7 @@ async def test_simulator_entry(hass: HomeAssistant) -> None:
     assert hass.states.get("sensor.samsung_ehs_outdoor_temperature").state == "4.2"
     assert hass.states.get("climate.samsung_ehs").state == "heat"
     # WC preview is calculated at startup even while disabled
-    wc = hass.states.get("sensor.samsung_ehs_weather_compensation_target")
+    wc = hass.states.get("sensor.samsung_ehs_flow_target")
     assert wc.state not in ("unknown", "unavailable")
     assert wc.attributes["effective_outdoor"] == 4.2
 
@@ -178,7 +200,7 @@ async def test_implausible_room_temp_ignored(hass: HomeAssistant, client) -> Non
     await _setup(hass)
     coordinator = hass.config_entries.async_entries(DOMAIN)[0].runtime_data
     assert coordinator.room_temp() is None
-    await coordinator.async_run_wc()
+    await coordinator.async_control(force_flow=True)
     assert coordinator.wc_result.room_offset == 0.0
 
 

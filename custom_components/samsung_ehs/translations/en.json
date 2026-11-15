@@ -36,10 +36,10 @@
           "outdoor_sensor": "Outdoor temperature sensor override",
           "extended_registers": "Read extended registers (outdoor temp, flow rate, compressor)",
           "scan_interval": "Poll interval",
-          "wc_interval": "Weather compensation interval"
+          "wc_interval": "Minimum time between flow setpoint changes"
         },
         "data_description": {
-          "room_sensor": "Used for room influence. If empty, the Samsung controller's room sensor is used.",
+          "room_sensor": "The thermostat's room temperature. If empty, the Samsung controller's room sensor is used.",
           "power_sensor": "Used for COP. Should measure the whole outdoor unit in W or kW.",
           "weather_entity": "Hourly forecast is blended into the outdoor temperature.",
           "outdoor_sensor": "Leave empty to use the heat pump's own outdoor sensor."
@@ -95,13 +95,16 @@
         "name": "Heat energy today"
       },
       "wc_target": {
-        "name": "Weather compensation target"
+        "name": "Flow target"
       },
       "outdoor_error": {
         "name": "Outdoor unit error code"
       },
       "indoor_error": {
         "name": "Indoor unit error code"
+      },
+      "adaptive_offset": {
+        "name": "Adaptive curve offset"
       }
     },
     "binary_sensor": {
@@ -113,6 +116,9 @@
       },
       "problem": {
         "name": "Problem"
+      },
+      "heat_demand": {
+        "name": "Heat demand"
       }
     },
     "switch": {
@@ -121,15 +127,9 @@
       },
       "away": {
         "name": "Away mode"
-      },
-      "weather_compensation": {
-        "name": "Weather compensation"
       }
     },
     "number": {
-      "wc_room_target": {
-        "name": "Room target"
-      },
       "wc_outdoor_design": {
         "name": "Curve: design outdoor temperature"
       },
@@ -162,6 +162,21 @@
       },
       "wc_forecast_weight": {
         "name": "Forecast weight"
+      },
+      "wc_hysteresis": {
+        "name": "Thermostat overshoot"
+      },
+      "wc_min_on": {
+        "name": "Minimum on time"
+      },
+      "wc_min_off": {
+        "name": "Minimum off time"
+      },
+      "wc_adapt_rate": {
+        "name": "Adaptive learning rate"
+      },
+      "wc_adapt_limit": {
+        "name": "Adaptive offset limit"
       }
     },
     "water_heater": {

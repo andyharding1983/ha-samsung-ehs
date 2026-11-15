@@ -1,8 +1,9 @@
-"""Climate entity (space heating/cooling) for Samsung EHS.
+"""Room thermostat for Samsung EHS space heating.
 
-With weather compensation enabled, the target temperature is the *room*
-target that feeds the room-influence term. With it disabled, the target is
-the flow-water setpoint written straight to the unit.
+The target is the room temperature. Home Assistant runs the heat pump on
+weather compensation (with forecast, room influence and an adaptive curve
+offset), pauses it once the room reaches target + hysteresis and restarts it
+when the room falls back to target.
 """
 
 from __future__ import annotations
@@ -18,19 +19,15 @@ from homeassistant.components.climate import (
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import EhsConfigEntry
-from . import registers as R
 from .const import WC_ROOM_TARGET
 from .coordinator import EhsCoordinator
 from .entity import EhsEntity, temperature_compat
 
-MODE_TO_HVAC = {
-    R.Mode.AUTO: HVACMode.AUTO,
-    R.Mode.COOL: HVACMode.COOL,
-    R.Mode.HEAT: HVACMode.HEAT,
-}
-HVAC_TO_MODE = {v: k for k, v in MODE_TO_HVAC.items()}
+MIN_ROOM = 5.0
+MAX_ROOM = 28.0
 
 
 async def async_setup_entry(
@@ -38,14 +35,17 @@ async def async_setup_entry(
     entry: EhsConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    async_add_entities([EhsClimate(entry.runtime_data)])
+    async_add_entities([EhsThermostat(entry.runtime_data)])
 
 
 @temperature_compat(ClimateEntity)
-class EhsClimate(EhsEntity, ClimateEntity):
+class EhsThermostat(EhsEntity, ClimateEntity, RestoreEntity):
     _attr_name = None  # use device name
     _attr_native_temperature_unit = UnitOfTemperature.CELSIUS
-    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT, HVACMode.COOL, HVACMode.AUTO]
+    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
+    _attr_min_temp = MIN_ROOM
+    _attr_max_temp = MAX_ROOM
+    _attr_target_temperature_step = 0.5
     _attr_supported_features = (
         ClimateEntityFeature.TARGET_TEMPERATURE
         | ClimateEntityFeature.TURN_ON
@@ -55,86 +55,65 @@ class EhsClimate(EhsEntity, ClimateEntity):
     def __init__(self, coordinator: EhsCoordinator) -> None:
         super().__init__(coordinator, "heating")
 
-    @property
-    def _room_control(self) -> bool:
-        return self.coordinator.wc_enabled
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last is None:
+            return
+        self.coordinator.heating_enabled = last.state != HVACMode.OFF
+        temp = last.attributes.get(ATTR_TEMPERATURE)
+        if temp is not None:
+            self.coordinator.wc_params[WC_ROOM_TARGET] = float(temp)
 
     @property
-    def target_temperature_step(self) -> float:
-        return 0.5
-
-    @property
-    def min_temp(self) -> float:
-        return 10.0 if self._room_control else R.FLOW_SET_MIN
-
-    @property
-    def max_temp(self) -> float:
-        return 28.0 if self._room_control else R.FLOW_SET_MAX
-
-    @property
-    def hvac_mode(self) -> HVACMode | None:
-        d = self.coordinator.data
-        if d is None:
-            return None
-        if not d.power:
-            return HVACMode.OFF
-        return MODE_TO_HVAC.get(d.mode, HVACMode.HEAT)
+    def hvac_mode(self) -> HVACMode:
+        return HVACMode.HEAT if self.coordinator.heating_enabled else HVACMode.OFF
 
     @property
     def hvac_action(self) -> HVACAction | None:
-        d = self.coordinator.data
+        c = self.coordinator
+        d = c.data
+        if not c.heating_enabled:
+            return HVACAction.OFF
         if d is None:
             return None
         if not d.power:
-            return HVACAction.OFF
+            return HVACAction.IDLE  # paused: room reached target + hysteresis
         if d.defrost:
             return HVACAction.DEFROSTING
-        running = bool((d.extended or {}).get("compressor_freq"))
-        if not running:
-            return HVACAction.IDLE
-        return HVACAction.COOLING if d.mode == R.Mode.COOL else HVACAction.HEATING
+        if (d.extended or {}).get("compressor_freq"):
+            return HVACAction.HEATING
+        return HVACAction.IDLE
 
     @property
     def native_current_temperature(self) -> float | None:
-        if self._room_control:
-            return self.coordinator.room_temp()
-        return self.coordinator.data.water_out if self.coordinator.data else None
+        return self.coordinator.room_temp()
 
     @property
     def native_target_temperature(self) -> float | None:
-        if self._room_control:
-            return self.coordinator.wc_params[WC_ROOM_TARGET]
-        return self.coordinator.data.water_out_set if self.coordinator.data else None
+        return self.coordinator.room_target
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
+        c = self.coordinator
+        r = c.wc_result
         return {
-            "control": "room (weather compensation)" if self._room_control else "flow",
-            "flow_temperature": self.coordinator.data.water_out
-            if self.coordinator.data
-            else None,
+            "heat_demand": c.thermostat.calling,
+            "flow_target": r.flow_target if r else None,
+            "flow_temperature": c.data.water_out if c.data else None,
+            "adaptive_offset": c.adaptive.value,
         }
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         temp = kwargs.get(ATTR_TEMPERATURE)
-        if temp is None:
-            return
-        if self._room_control:
-            await self.coordinator.async_set_wc_param(WC_ROOM_TARGET, float(temp))
-        else:
-            await self.coordinator.async_write(R.IU_WATER_OUT_SET, R.encode_temp(temp))
+        if temp is not None:
+            await self.coordinator.async_set_room_target(float(temp))
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
-        if hvac_mode == HVACMode.OFF:
-            await self.coordinator.async_write(R.IU_POWER, 0)
-            return
-        await self.coordinator.async_write(R.IU_MODE, int(HVAC_TO_MODE[hvac_mode]))
-        if not (self.coordinator.data and self.coordinator.data.power):
-            await self.coordinator.async_write(R.IU_POWER, 1)
-        await self.coordinator.async_run_wc()
+        await self.coordinator.async_set_heating(hvac_mode == HVACMode.HEAT)
 
     async def async_turn_on(self) -> None:
-        await self.async_set_hvac_mode(HVACMode.HEAT)
+        await self.coordinator.async_set_heating(True)
 
     async def async_turn_off(self) -> None:
-        await self.async_set_hvac_mode(HVACMode.OFF)
+        await self.coordinator.async_set_heating(False)

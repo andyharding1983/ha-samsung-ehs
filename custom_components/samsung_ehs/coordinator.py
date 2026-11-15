@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 from datetime import datetime, timedelta
 import logging
+import time
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
@@ -30,9 +31,16 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_WC_INTERVAL,
     DOMAIN,
+    WC_ADAPT_LIMIT,
+    WC_ADAPT_RATE,
     WC_DEFAULTS,
+    WC_HYSTERESIS,
+    WC_MIN_OFF,
+    WC_MIN_ON,
+    WC_ROOM_TARGET,
     WC_WRITE_DEADBAND,
 )
+from .control import AdaptiveOffset, Thermostat
 from .cop import EnergyTracker, heat_output_w, instant_cop
 from .weather_comp import WcParams, WcResult, compute
 
@@ -95,12 +103,21 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
             seconds=opts.get(CONF_WC_INTERVAL, DEFAULT_WC_INTERVAL)
         )
 
-        # Weather compensation state. Params are pushed in by the (restored)
-        # number entities; the enable flag by the (restored) switch entity.
+        # Control state. Tuning params are pushed in by the (restored) number
+        # entities; room target and on/off by the (restored) climate entity.
         self.wc_params: dict[str, float] = dict(WC_DEFAULTS)
-        self.wc_enabled = False
+        self.heating_enabled = True
         self.wc_result: WcResult | None = None
         self.wc_last_write: datetime | None = None
+        self.thermostat = Thermostat()
+        self.adaptive = AdaptiveOffset()
+        self._thermostat_synced = False
+        # Set once entities have restored target/params, so we never act
+        # on defaults right after a restart.
+        self.ready = False
+        self._last_control: float | None = None
+        self._last_flow_write: float | None = None
+        self._control_lock = asyncio.Lock()
         self._forecast: list[tuple[datetime, float]] | None = None
         self._forecast_at: datetime | None = None
 
@@ -111,24 +128,36 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         self.energy = EnergyTracker()
         self._store: Store = Store(hass, STORAGE_VERSION, f"{DOMAIN}.{entry.entry_id}")
         self._last_save: datetime | None = None
-        self._unsub_wc = None
+        self._unsub_listener = None
         self._closed = False
 
     # ------------------------------------------------------------------ setup
     async def async_setup(self) -> None:
-        self.energy = EnergyTracker.from_dict(await self._store.async_load())
-        self._unsub_wc = async_track_time_interval(
-            self.hass, self._async_wc_tick, self.wc_interval
-        )
+        stored = await self._store.async_load() or {}
+        if "energy" not in stored:  # pre-0.2 layout: energy at top level
+            stored = {"energy": stored}
+        self.energy = EnergyTracker.from_dict(stored.get("energy"))
+        self.adaptive.value = float(stored.get("adaptive_offset", 0.0))
+        # Run the control loop after every successful poll.
+        self._unsub_listener = self.async_add_listener(self._schedule_control)
+
+    def _store_data(self) -> dict[str, Any]:
+        return {"energy": self.energy.as_dict(), "adaptive_offset": self.adaptive.value}
+
+    def _schedule_control(self) -> None:
+        if self.ready and self.data is not None and not self._control_lock.locked():
+            self.config_entry.async_create_background_task(
+                self.hass, self.async_control(), "samsung_ehs control"
+            )
 
     async def async_shutdown(self) -> None:
         if self._closed:
             return
         self._closed = True
-        if self._unsub_wc:
-            self._unsub_wc()
-            self._unsub_wc = None
-        await self._store.async_save(self.energy.as_dict())
+        if self._unsub_listener:
+            self._unsub_listener()
+            self._unsub_listener = None
+        await self._store.async_save(self._store_data())
         await super().async_shutdown()
         self.client.close()
 
@@ -153,7 +182,7 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         self.energy.update(now, self.heat_w, self.power_w)
         if self._last_save is None or now - self._last_save >= SAVE_EVERY:
             self._last_save = now
-            self._store.async_delay_save(self.energy.as_dict, 10)
+            self._store.async_delay_save(self._store_data, 10)
 
     # ----------------------------------------------------------- unit writes
     async def async_write(self, offset: int, value: int) -> None:
@@ -242,42 +271,120 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
 
     async def async_set_wc_param(self, key: str, value: float) -> None:
         self.wc_params[key] = value
-        await self.async_run_wc()
+        self._apply_thermostat_params()
+        await self.async_control(force_flow=True)
 
-    async def async_set_wc_enabled(self, enabled: bool) -> None:
-        self.wc_enabled = enabled
-        await self.async_run_wc()
+    def _apply_thermostat_params(self) -> None:
+        p = self.wc_params
+        self.thermostat.hysteresis = p[WC_HYSTERESIS]
+        self.thermostat.min_on_s = p[WC_MIN_ON] * 60
+        self.thermostat.min_off_s = p[WC_MIN_OFF] * 60
+        self.adaptive.rate = p[WC_ADAPT_RATE]
+        self.adaptive.limit = p[WC_ADAPT_LIMIT]
 
-    async def _async_wc_tick(self, _now: datetime) -> None:
-        await self.async_run_wc()
+    @property
+    def room_target(self) -> float:
+        return self.wc_params[WC_ROOM_TARGET]
 
-    async def async_run_wc(self) -> None:
-        """Calculate and (if enabled) apply the flow temperature target."""
-        outdoor = self.outdoor_temp()
-        if outdoor is None:
-            self.wc_result = None
-            self.async_update_listeners()
+    async def async_set_room_target(self, value: float) -> None:
+        await self.async_set_wc_param(WC_ROOM_TARGET, value)
+
+    async def async_set_heating(self, enabled: bool) -> None:
+        """User turned heating on/off: overrides the thermostat timers."""
+        self.heating_enabled = enabled
+        self.thermostat.force(time.monotonic(), enabled)
+        await self.async_control(force_flow=True)
+
+    async def async_control(self, force_flow: bool = False) -> None:
+        """Thermostat, adaptive offset and weather compensation in one pass."""
+        if self._control_lock.locked():
             return
-        await self._async_refresh_forecast()
-        p = self.params()
-        p = replace(p, flow_min=max(p.flow_min, R.FLOW_SET_MIN),
-                    flow_max=min(p.flow_max, R.FLOW_SET_MAX))
-        self.wc_result = compute(
-            p, outdoor, self._forecast_window(p.forecast_hours), self.room_temp()
-        )
+        async with self._control_lock:
+            await self._async_control(force_flow)
+
+    async def _async_control(self, force_flow: bool) -> None:
+        data = self.data
+        if data is None or not self.ready:
+            return
+        now = time.monotonic()
+        dt_s = 0.0 if self._last_control is None else now - self._last_control
+        self._last_control = now
+        self._apply_thermostat_params()
+
+        if not self._thermostat_synced:
+            # After a restart assume the unit only just started, so the
+            # minimum on time is respected.
+            self.thermostat.calling = data.power or not self.heating_enabled
+            self.thermostat.last_change = now
+            self._thermostat_synced = True
+
+        room = self.room_temp()
+        target = self.room_target
+        running = self.heating_enabled and data.power and not data.defrost
+        self.adaptive.update(dt_s, room, target, learning=running)
+
+        outdoor = self.outdoor_temp()
+        result: WcResult | None = None
+        if outdoor is not None:
+            await self._async_refresh_forecast()
+            p = self.params()
+            p = replace(
+                p,
+                flow_min=max(p.flow_min, R.FLOW_SET_MIN),
+                flow_max=min(p.flow_max, R.FLOW_SET_MAX),
+            )
+            result = compute(
+                p, outdoor, self._forecast_window(p.forecast_hours), room,
+                curve_offset=self.adaptive.value,
+            )
+        self.wc_result = result
+        heating_needed = result.heating_needed if result else True
+
+        calling = self.thermostat.update(now, room, target, heating_needed)
+        want_on = self.heating_enabled and calling
+
+        if want_on != data.power or (want_on and data.mode != R.Mode.HEAT):
+            await self._async_set_power(want_on, data)
+
+        if want_on and result is not None:
+            await self._async_write_flow(result.flow_target, data, now, force_flow)
+
         self.async_update_listeners()
 
-        data = self.data
-        if not (self.wc_enabled and data and data.power and data.mode == R.Mode.HEAT):
-            return
-        target = self.wc_result.flow_target
+    async def _async_set_power(self, on: bool, data: R.EhsData) -> None:
+        _LOGGER.info(
+            "Space heating %s (room %s, target %s)",
+            "on" if on else "off", self.room_temp(), self.room_target,
+        )
+        try:
+            if on and data.mode != R.Mode.HEAT:
+                await self.client.write_indoor(R.IU_MODE, int(R.Mode.HEAT))
+            if on != data.power:
+                await self.client.write_indoor(R.IU_POWER, 1 if on else 0)
+            data.power = on
+            data.mode = R.Mode.HEAT if on else data.mode
+        except EhsConnectionError as err:
+            _LOGGER.warning("Could not switch space heating: %s", err)
+
+    async def _async_write_flow(
+        self, target: float, data: R.EhsData, now: float, force: bool
+    ) -> None:
         current = data.water_out_set
         if current is not None and abs(target - current) < WC_WRITE_DEADBAND:
             return
-        _LOGGER.debug("WC: flow setpoint %s -> %s (%s)", current, target, self.wc_result)
+        interval = self.wc_interval.total_seconds()
+        if (
+            not force
+            and self._last_flow_write is not None
+            and now - self._last_flow_write < interval
+        ):
+            return
+        _LOGGER.debug("Flow setpoint %s -> %s (%s)", current, target, self.wc_result)
         try:
-            await self.async_write(R.IU_WATER_OUT_SET, R.encode_temp(target))
-            self.wc_last_write = dt_util.utcnow()
-            self.async_update_listeners()
-        except HomeAssistantError as err:
-            _LOGGER.warning("WC: could not write flow setpoint: %s", err)
+            await self.client.write_indoor(R.IU_WATER_OUT_SET, R.encode_temp(target))
+        except EhsConnectionError as err:
+            _LOGGER.warning("Could not write flow setpoint: %s", err)
+            return
+        data.water_out_set = target
+        self._last_flow_write = now
+        self.wc_last_write = dt_util.utcnow()
