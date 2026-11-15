@@ -148,7 +148,7 @@ SENSORS: tuple[EhsSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.KELVIN,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=2,
-        value_fn=lambda c: c.adaptive.value,
+        value_fn=lambda c: round(c.adaptive.value, 2),
     ),
     EhsSensorDescription(
         key="outdoor_error",

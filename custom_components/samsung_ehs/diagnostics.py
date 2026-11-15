@@ -21,7 +21,7 @@ async def async_get_config_entry_diagnostics(
         "weather_compensation": {
             "heating_enabled": c.heating_enabled,
             "heat_demand": c.thermostat.calling,
-            "adaptive_offset": c.adaptive.value,
+            "adaptive_offset": round(c.adaptive.value, 2),
             "params": c.wc_params,
             "result": asdict(c.wc_result) if c.wc_result else None,
             "last_write": c.wc_last_write.isoformat() if c.wc_last_write else None,
