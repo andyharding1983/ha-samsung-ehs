@@ -115,6 +115,12 @@
       },
       "learned_flow_mild": {
         "name": "Learned flow at mild end"
+      },
+      "electrical_power": {
+        "name": "Electrical power"
+      },
+      "electrical_energy_today": {
+        "name": "Electrical energy today"
       }
     },
     "binary_sensor": {

@@ -100,7 +100,7 @@ def curve_points(
     offset_design: float = 0.0,
     offset_mild: float = 0.0,
     step: float = 1.0,
-    margin: float = 5.0,
+    margin: float = 10.0,
 ) -> list[dict[str, float]]:
     """Sample the set and learned curves for plotting.
 

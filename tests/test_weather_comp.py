@@ -72,7 +72,7 @@ def test_end_offsets_blend_and_hold():
 
 def test_curve_points_follow_curve_and_offsets():
     p = W.WcParams(flow_design=40, flow_mild=25, flow_min=25, flow_max=45)
-    pts = W.curve_points(p, offset_design=2.0, offset_mild=0.0)
+    pts = W.curve_points(p, offset_design=2.0, offset_mild=0.0, margin=5.0)
     by_t = {pt["outdoor"]: pt for pt in pts}
     assert by_t[-3.0] == {"outdoor": -3.0, "set": 40.0, "learned": 42.0}
     assert by_t[15.0] == {"outdoor": 15.0, "set": 25.0, "learned": 25.0}

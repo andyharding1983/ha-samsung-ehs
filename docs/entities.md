@@ -183,7 +183,7 @@ warms up. The same applies downwards at the *minimum*. It can always learn back 
 | `learned_flow_at_design` | Curve flow at the design temperature including learning (°C). This is what *Apply learned curve* would set. |
 | `learned_flow_at_mild` | The same at the mild temperature (°C) |
 | `design_weight` | `w` at today's effective outdoor temperature (0–1) |
-| `curve` | The whole curve sampled every 1 °C from 5 °C below the design temperature up to the heating cut-off: a list of `{outdoor, set, learned}`. `set` is your curve, `learned` includes the learned offsets. Both are limited to min/max flow. It's for plotting and isn't stored in the recorder database. |
+| `curve` | The whole curve sampled every 1 °C from 10 °C below the design temperature up to the heating cut-off: a list of `{outdoor, set, learned}`. `set` is your curve, `learned` includes the learned offsets. Both are limited to min/max flow. It's for plotting and isn't stored in the recorder database. |
 
 ### Learned flow at cold end / mild end
 
@@ -235,46 +235,56 @@ apex_config:
     dashArray: [5, 0, 0]
   xaxis:
     type: numeric
-    tickAmount: 7
+    tickAmount: 6
     labels:
       formatter: |
         EVAL:function (v, t, o) {
-          const LO = -15, HI = 20, g = o.w.globals;
+          const LO = -10, HI = 20, g = o.w.globals;
           return Math.round(LO + (v - g.minX) / (g.maxX - g.minX) * (HI - LO)) + '°';
         }
   tooltip:
     x:
       formatter: |
         EVAL:function (v, o) {
-          const LO = -15, HI = 20, g = o.w.globals;
+          const LO = -10, HI = 20, g = o.w.globals;
           return 'Outdoor ' + (LO + (v - g.minX) / (g.maxX - g.minX) * (HI - LO)).toFixed(1) + ' °C';
         }
 series:
   - entity: sensor.samsung_ehs_learned_curve_offset
     name: Set curve
+    extend_to: false
     color: '#9e9e9e'
     data_generator: |
-      const LO = -15, HI = 20, t0 = start.getTime(), w = end.getTime() - t0;
+      const LO = -10, HI = 20, t0 = start.getTime(), w = end.getTime() - t0;
       return (entity.attributes.curve || [])
         .filter((p) => p.outdoor >= LO && p.outdoor <= HI)
         .map((p) => [t0 + (p.outdoor - LO) / (HI - LO) * w, p.set]);
   - entity: sensor.samsung_ehs_learned_curve_offset
     name: Learned curve
+    extend_to: false
     color: '#ff7043'
     data_generator: |
-      const LO = -15, HI = 20, t0 = start.getTime(), w = end.getTime() - t0;
+      const LO = -10, HI = 20, t0 = start.getTime(), w = end.getTime() - t0;
       return (entity.attributes.curve || [])
         .filter((p) => p.outdoor >= LO && p.outdoor <= HI)
         .map((p) => [t0 + (p.outdoor - LO) / (HI - LO) * w, p.learned]);
   - entity: sensor.samsung_ehs_flow_target
     name: Flow target now
+    extend_to: false
     color: '#29b6f6'
     data_generator: |
-      const LO = -15, HI = 20, t0 = start.getTime(), w = end.getTime() - t0;
+      const LO = -10, HI = 20, t0 = start.getTime(), w = end.getTime() - t0;
       const x = entity.attributes.effective_outdoor;
       if (x == null || entity.state === 'unavailable') return [];
       return [[t0 + (Math.min(HI, Math.max(LO, x)) - LO) / (HI - LO) * w, Number(entity.state)]];
 ```
+
+`extend_to: false` matters: by default ApexCharts card extends each series' last point to the right edge
+of the chart, which would draw a false horizontal line.
+
+The curves run from 10 °C below the design temperature up to the heating cut-off. Beyond the design
+point the line simply keeps its slope until it reaches the maximum flow. At the mild end it flattens at
+the minimum flow before the cut-off, and above the cut-off there's no heating at all.
 
 The blue dot is today's flow target, plotted at the effective outdoor temperature. It sits above or below
 the learned curve by the current room correction (`room_offset`).
@@ -290,6 +300,8 @@ zero, so the heat pump behaves exactly the same but the curve numbers now show w
 |---|---|
 | `sensor.samsung_ehs_heat_output` | Thermal power delivered (W) = flow rate × 4.18 × (flow − return). Negative during defrost. |
 | `sensor.samsung_ehs_cop` | Instant COP = heat output ÷ electrical power. Shown as unknown below 100 W input (standby) and limited to 10. |
+| `sensor.samsung_ehs_electrical_power` | Electrical input (W), copied from the power sensor chosen in the options. In simulator mode, when no power sensor is set, it's the simulated value. |
+| `sensor.samsung_ehs_electrical_energy_today` | Electrical energy used today (kWh), integrated from the power above. Resets at local midnight. |
 | `sensor.samsung_ehs_cop_today` | Heat energy today ÷ electrical energy today. Resets at local midnight. |
 | `sensor.samsung_ehs_cop_lifetime` | The same since the integration was installed |
 | `sensor.samsung_ehs_heat_energy` | Total heat delivered (kWh), including defrost losses. Can go into the Energy dashboard. |

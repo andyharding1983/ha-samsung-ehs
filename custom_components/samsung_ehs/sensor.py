@@ -147,6 +147,14 @@ SENSORS: tuple[EhsSensorDescription, ...] = (
         value_fn=lambda c: c.heat_w,
     ),
     EhsSensorDescription(
+        key="electrical_power",
+        device_class=SensorDeviceClass.POWER,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        value_fn=lambda c: c.power_w,
+    ),
+    EhsSensorDescription(
         key="cop",
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=2,
@@ -177,6 +185,14 @@ SENSORS: tuple[EhsSensorDescription, ...] = (
         state_class=SensorStateClass.TOTAL_INCREASING,
         suggested_display_precision=2,
         value_fn=lambda c: round(c.energy.heat_today_kwh, 3),
+    ),
+    EhsSensorDescription(
+        key="electrical_energy_today",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        suggested_display_precision=2,
+        value_fn=lambda c: round(c.energy.elec_today_kwh, 3),
     ),
     EhsSensorDescription(
         key="wc_target",
