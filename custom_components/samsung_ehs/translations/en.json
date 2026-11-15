@@ -1,0 +1,185 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Samsung EHS (MIM-B19N)",
+        "description": "Connect to the MIM-B19N Modbus module over RS485. The module runs at 9600 baud, 8 data bits, even parity, 1 stop bit.",
+        "data": {
+          "port": "Serial port",
+          "slave": "Modbus address",
+          "baudrate": "Baud rate",
+          "indoor_index": "Indoor unit index"
+        },
+        "data_description": {
+          "port": "For example /dev/ttyUSB0 or /dev/serial/by-id/…",
+          "slave": "Set by the DIP and rotary switches on the MIM-B19N (1–247).",
+          "indoor_index": "0 for a single EHS unit."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "No response from the MIM-B19N. Check the wiring, port and address.",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This heat pump is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Samsung EHS options",
+        "data": {
+          "room_sensor": "Room temperature sensor",
+          "power_sensor": "Heat pump electrical power sensor",
+          "weather_entity": "Weather forecast",
+          "outdoor_sensor": "Outdoor temperature sensor override",
+          "extended_registers": "Read extended registers (outdoor temp, flow rate, compressor)",
+          "scan_interval": "Poll interval",
+          "wc_interval": "Weather compensation interval"
+        },
+        "data_description": {
+          "room_sensor": "Used for room influence. If empty, the Samsung controller's room sensor is used.",
+          "power_sensor": "Used for COP. Should measure the whole outdoor unit in W or kW.",
+          "weather_entity": "Hourly forecast is blended into the outdoor temperature.",
+          "outdoor_sensor": "Leave empty to use the heat pump's own outdoor sensor."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "flow_temp": {
+        "name": "Flow temperature"
+      },
+      "return_temp": {
+        "name": "Return temperature"
+      },
+      "flow_setpoint": {
+        "name": "Flow setpoint"
+      },
+      "delta_t": {
+        "name": "Flow/return difference"
+      },
+      "dhw_temp": {
+        "name": "Hot water temperature"
+      },
+      "unit_room_temp": {
+        "name": "Controller room temperature"
+      },
+      "outdoor_temp": {
+        "name": "Outdoor temperature"
+      },
+      "flow_rate": {
+        "name": "Flow rate"
+      },
+      "compressor_freq": {
+        "name": "Compressor frequency"
+      },
+      "heat_output": {
+        "name": "Heat output"
+      },
+      "cop": {
+        "name": "COP"
+      },
+      "cop_today": {
+        "name": "COP today"
+      },
+      "scop": {
+        "name": "COP lifetime"
+      },
+      "heat_energy": {
+        "name": "Heat energy"
+      },
+      "heat_energy_today": {
+        "name": "Heat energy today"
+      },
+      "wc_target": {
+        "name": "Weather compensation target"
+      },
+      "outdoor_error": {
+        "name": "Outdoor unit error code"
+      },
+      "indoor_error": {
+        "name": "Indoor unit error code"
+      }
+    },
+    "binary_sensor": {
+      "defrost": {
+        "name": "Defrost"
+      },
+      "compressor_running": {
+        "name": "Compressor"
+      },
+      "problem": {
+        "name": "Problem"
+      }
+    },
+    "switch": {
+      "quiet": {
+        "name": "Quiet mode"
+      },
+      "away": {
+        "name": "Away mode"
+      },
+      "weather_compensation": {
+        "name": "Weather compensation"
+      }
+    },
+    "number": {
+      "wc_room_target": {
+        "name": "Room target"
+      },
+      "wc_outdoor_design": {
+        "name": "Curve: design outdoor temperature"
+      },
+      "wc_flow_design": {
+        "name": "Curve: flow at design temperature"
+      },
+      "wc_outdoor_mild": {
+        "name": "Curve: mild outdoor temperature"
+      },
+      "wc_flow_mild": {
+        "name": "Curve: flow at mild temperature"
+      },
+      "wc_flow_min": {
+        "name": "Minimum flow temperature"
+      },
+      "wc_flow_max": {
+        "name": "Maximum flow temperature"
+      },
+      "wc_heating_cutoff": {
+        "name": "Heating cut-off outdoor temperature"
+      },
+      "wc_room_gain": {
+        "name": "Room influence gain"
+      },
+      "wc_room_max_offset": {
+        "name": "Room influence limit"
+      },
+      "wc_forecast_hours": {
+        "name": "Forecast look-ahead"
+      },
+      "wc_forecast_weight": {
+        "name": "Forecast weight"
+      }
+    },
+    "water_heater": {
+      "hot_water": {
+        "name": "Hot water",
+        "state": {
+          "eco": "Eco",
+          "standard": "Standard",
+          "performance": "Power",
+          "high_demand": "Force",
+          "off": "Off"
+        }
+      }
+    },
+    "climate": {
+      "heating": {
+        "name": "Heating"
+      }
+    }
+  }
+}

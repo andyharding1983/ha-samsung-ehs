@@ -1,0 +1,183 @@
+"""Sensors for Samsung EHS."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
+
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorEntityDescription,
+    SensorStateClass,
+)
+from homeassistant.const import (
+    EntityCategory,
+    UnitOfEnergy,
+    UnitOfFrequency,
+    UnitOfPower,
+    UnitOfTemperature,
+    UnitOfVolumeFlowRate,
+)
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+
+from . import EhsConfigEntry
+from .coordinator import EhsCoordinator
+from .entity import EhsEntity
+
+
+@dataclass(frozen=True, kw_only=True)
+class EhsSensorDescription(SensorEntityDescription):
+    value_fn: Callable[[EhsCoordinator], Any]
+    attrs_fn: Callable[[EhsCoordinator], dict[str, Any] | None] | None = None
+
+
+def _ext(key: str) -> Callable[[EhsCoordinator], Any]:
+    return lambda c: (c.data.extended or {}).get(key) if c.data else None
+
+
+TEMP = {
+    "device_class": SensorDeviceClass.TEMPERATURE,
+    "native_unit_of_measurement": UnitOfTemperature.CELSIUS,
+    "state_class": SensorStateClass.MEASUREMENT,
+}
+
+
+def _wc_attrs(c: EhsCoordinator) -> dict[str, Any] | None:
+    r = c.wc_result
+    if r is None:
+        return None
+    return {
+        "curve_flow": r.curve_flow,
+        "room_offset": r.room_offset,
+        "effective_outdoor": r.effective_outdoor,
+        "forecast_mean": r.forecast_mean,
+        "heating_needed": r.heating_needed,
+        "enabled": c.wc_enabled,
+        "last_write": c.wc_last_write.isoformat() if c.wc_last_write else None,
+    }
+
+
+SENSORS: tuple[EhsSensorDescription, ...] = (
+    EhsSensorDescription(key="flow_temp", **TEMP, value_fn=lambda c: c.data.water_out),
+    EhsSensorDescription(key="return_temp", **TEMP, value_fn=lambda c: c.data.water_in),
+    EhsSensorDescription(
+        key="flow_setpoint", **TEMP, value_fn=lambda c: c.data.water_out_set
+    ),
+    EhsSensorDescription(
+        key="delta_t",
+        native_unit_of_measurement=UnitOfTemperature.KELVIN,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        value_fn=lambda c: c.data.delta_t,
+    ),
+    EhsSensorDescription(key="dhw_temp", **TEMP, value_fn=lambda c: c.data.dhw_temp),
+    EhsSensorDescription(
+        key="unit_room_temp",
+        **TEMP,
+        entity_registry_enabled_default=False,
+        value_fn=lambda c: c.data.room_temp,
+    ),
+    EhsSensorDescription(key="outdoor_temp", **TEMP, value_fn=_ext("outdoor_temp")),
+    EhsSensorDescription(
+        key="flow_rate",
+        device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
+        native_unit_of_measurement=UnitOfVolumeFlowRate.LITERS_PER_MINUTE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        value_fn=_ext("flow_rate"),
+    ),
+    EhsSensorDescription(
+        key="compressor_freq",
+        device_class=SensorDeviceClass.FREQUENCY,
+        native_unit_of_measurement=UnitOfFrequency.HERTZ,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_ext("compressor_freq"),
+    ),
+    EhsSensorDescription(
+        key="heat_output",
+        device_class=SensorDeviceClass.POWER,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        value_fn=lambda c: c.heat_w,
+    ),
+    EhsSensorDescription(
+        key="cop",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda c: c.cop,
+    ),
+    EhsSensorDescription(
+        key="cop_today",
+        suggested_display_precision=2,
+        value_fn=lambda c: c.energy.cop_today,
+    ),
+    EhsSensorDescription(
+        key="scop",
+        suggested_display_precision=2,
+        value_fn=lambda c: c.energy.cop_lifetime,
+    ),
+    EhsSensorDescription(
+        key="heat_energy",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.TOTAL,
+        suggested_display_precision=2,
+        value_fn=lambda c: round(c.energy.heat_kwh, 3),
+    ),
+    EhsSensorDescription(
+        key="heat_energy_today",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.TOTAL,
+        suggested_display_precision=2,
+        value_fn=lambda c: round(c.energy.heat_today_kwh, 3),
+    ),
+    EhsSensorDescription(
+        key="wc_target",
+        **TEMP,
+        value_fn=lambda c: c.wc_result.flow_target if c.wc_result else None,
+        attrs_fn=_wc_attrs,
+    ),
+    EhsSensorDescription(
+        key="outdoor_error",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda c: c.data.outdoor_error,
+    ),
+    EhsSensorDescription(
+        key="indoor_error",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda c: c.data.indoor_error,
+    ),
+)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: EhsConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    coordinator = entry.runtime_data
+    async_add_entities(EhsSensor(coordinator, d) for d in SENSORS)
+
+
+class EhsSensor(EhsEntity, SensorEntity):
+    entity_description: EhsSensorDescription
+
+    def __init__(self, coordinator: EhsCoordinator, description: EhsSensorDescription) -> None:
+        super().__init__(coordinator, description.key)
+        self.entity_description = description
+
+    @property
+    def native_value(self) -> Any:
+        if self.coordinator.data is None:
+            return None
+        return self.entity_description.value_fn(self.coordinator)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        fn = self.entity_description.attrs_fn
+        return fn(self.coordinator) if fn else None

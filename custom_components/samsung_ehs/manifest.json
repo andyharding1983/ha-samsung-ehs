@@ -1,0 +1,14 @@
+{
+  "domain": "samsung_ehs",
+  "name": "Samsung EHS Heat Pump",
+  "codeowners": ["@andyharding1983"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/andyharding1983/ha-samsung-ehs",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/andyharding1983/ha-samsung-ehs/issues",
+  "loggers": ["custom_components.samsung_ehs", "pymodbus"],
+  "requirements": ["pymodbus>=3.6.0"],
+  "version": "0.1.0"
+}
