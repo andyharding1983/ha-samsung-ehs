@@ -73,6 +73,18 @@ class EhsWaterHeater(EhsEntity, WaterHeaterEntity):
             return STATE_OFF
         return DHW_TO_STATE.get(d.dhw_mode, STATE_STANDARD)
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        c = self.coordinator
+        if not c.dhw_schedule:
+            return None
+        st = c.hass.states.get(c.dhw_schedule)
+        return {
+            "schedule": c.dhw_schedule,
+            "schedule_state": st.state if st else None,
+            "next_schedule_change": st.attributes.get("next_event") if st else None,
+        }
+
     async def async_set_temperature(self, **kwargs: Any) -> None:
         temp = kwargs.get(ATTR_TEMPERATURE)
         if temp is not None:

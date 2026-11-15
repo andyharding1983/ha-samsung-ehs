@@ -68,6 +68,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: EhsConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     # Entities have now restored the room target, on/off and tuning values.
     coordinator.ready = True
+    await coordinator.async_start_dhw_schedule()
     entry.async_create_background_task(
         hass, coordinator.async_control(force_flow=True), "samsung_ehs initial control"
     )

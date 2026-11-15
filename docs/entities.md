@@ -109,8 +109,8 @@ Only created when the **Hot water cylinder** option is on, which is the default.
 turn it off in the setup dialog or in *Configure*. The hot water entity and the hot water temperature sensor are
 then removed.
 
-Controls the domestic hot water cylinder directly on the unit. Home Assistant doesn't add any logic of its
-own here.
+Controls the domestic hot water cylinder directly on the unit. Apart from the optional schedule below,
+Home Assistant doesn't add any logic of its own here.
 
 | Operation | Samsung mode |
 |---|---|
@@ -121,6 +121,28 @@ own here.
 | `high_demand` | Force: one-off forced heat-up (EHS only) |
 
 Target range 30–70 °C. The current temperature is the cylinder sensor.
+
+### Hot water schedule
+
+Optional. Set it up in three steps:
+
+1. Create a **Schedule** helper under *Settings → Devices & services → Helpers → Create helper →
+   Schedule*.
+2. Draw the times you want hot water, for example a cheap-tariff window.
+3. Choose that helper as **Hot water schedule** in the integration's *Configure* dialog.
+
+- When a block **starts**, hot water is switched on, keeping the mode and target you set.
+- When a block **ends**, it is switched off and the tank just cools.
+- At startup it is set to match the schedule.
+- It only acts when a block starts or ends. If you switch hot water on or off by hand, for example for an
+  extra shower, that lasts until the next block starts or ends.
+- If the schedule helper is unavailable, hot water is left alone.
+
+| Attribute | Meaning |
+|---|---|
+| `schedule` | The schedule helper being followed |
+| `schedule_state` | `on` inside a block, `off` outside |
+| `next_schedule_change` | When the schedule next turns on or off |
 
 ---
 

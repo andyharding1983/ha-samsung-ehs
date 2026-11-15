@@ -11,7 +11,8 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
+from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -20,6 +21,7 @@ from homeassistant.util import dt as dt_util
 from . import registers as R
 from .api import EhsClient, EhsConnectionError
 from .const import (
+    CONF_DHW_SCHEDULE,
     BOOST_DURATION_S,
     WC_WIND_GAIN,
     WC_WIND_THRESHOLD,
@@ -128,6 +130,10 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         self.power_sensor: str | None = opts.get(CONF_POWER_SENSOR)
         self.weather_entity: str | None = opts.get(CONF_WEATHER_ENTITY)
         self.outdoor_sensor: str | None = opts.get(CONF_OUTDOOR_SENSOR)
+        self.dhw_schedule: str | None = (
+            opts.get(CONF_DHW_SCHEDULE) if self.hot_water else None
+        )
+        self._unsub_schedule = None
         self.wc_interval = timedelta(
             seconds=opts.get(CONF_WC_INTERVAL, DEFAULT_WC_INTERVAL)
         )
@@ -197,9 +203,54 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         if self._unsub_listener:
             self._unsub_listener()
             self._unsub_listener = None
+        if self._unsub_schedule:
+            self._unsub_schedule()
+            self._unsub_schedule = None
         await self._store.async_save(self._store_data())
         await super().async_shutdown()
         self.client.close()
+
+    # ------------------------------------------------------ hot water schedule
+    async def async_start_dhw_schedule(self) -> None:
+        """Follow the schedule helper: hot water on in a block, off outside.
+
+        Acts on block start/end (and once at startup), so hot water switched
+        on or off by hand stays that way until the next block edge.
+        """
+        if not self.dhw_schedule:
+            return
+        self._unsub_schedule = async_track_state_change_event(
+            self.hass, self.dhw_schedule, self._on_schedule_change
+        )
+        st = self.hass.states.get(self.dhw_schedule)
+        if st is not None:
+            await self._async_apply_schedule(st.state)
+
+    @callback
+    def _on_schedule_change(self, event: Event[EventStateChangedData]) -> None:
+        new = event.data["new_state"]
+        old = event.data["old_state"]
+        if new is None or (old is not None and old.state == new.state):
+            return
+        self.config_entry.async_create_background_task(
+            self.hass, self._async_apply_schedule(new.state), "samsung_ehs dhw schedule"
+        )
+
+    async def _async_apply_schedule(self, state: str) -> None:
+        if state not in ("on", "off"):
+            return  # unavailable/unknown: leave hot water alone
+        on = state == "on"
+        if self.data is not None and self.data.dhw_power == on:
+            return
+        _LOGGER.info("Hot water schedule: %s", "on" if on else "off")
+        try:
+            await self.client.write_indoor(R.IU_DHW_POWER, 1 if on else 0)
+        except EhsConnectionError as err:
+            _LOGGER.warning("Could not switch hot water: %s", err)
+            return
+        if self.data is not None:
+            self.data.dhw_power = on
+        self.async_update_listeners()
 
     # ---------------------------------------------------------------- polling
     async def _async_update_data(self) -> R.EhsData:

@@ -14,7 +14,7 @@ No cloud, no SmartThings.
 | Platform | Entities |
 |---|---|
 | Climate | Room thermostat: Heat/Off, room target temperature, Boost preset |
-| Water heater | Hot water on/off, Eco / Standard / Power / Force, tank target (optional, for heating-only systems) |
+| Water heater | Hot water on/off, Eco / Standard / Power / Force, tank target, optional time schedule (can be turned off for heating-only systems) |
 | Sensor | Flow, return, ΔT, hot water tank, outdoor temp, flow rate, compressor frequency, heat output, electrical power, COP (instant / today / lifetime), heat and electrical energy, flow target, learned curve offset, error codes |
 | Binary sensor | Heat demand, defrost, compressor running, problem |
 | Switch | Quiet mode |
@@ -49,6 +49,7 @@ Then open **Configure** on the integration to set:
 | Option | Used for |
 |---|---|
 | Hot water cylinder | Turn off on heating-only systems to hide all hot water controls |
+| Hot water schedule | Optional Schedule helper: hot water on during its blocks, off outside ([details](docs/entities.md#hot-water-schedule)) |
 | Room temperature sensor | Room influence (falls back to the Samsung controller's sensor) |
 | Heat pump electrical power sensor | COP (W or kW, ideally a dedicated meter on the outdoor unit supply) |
 | Weather forecast | Forecast blending for weather compensation |

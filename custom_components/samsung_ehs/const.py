@@ -25,6 +25,7 @@ CONF_OUTDOOR_SENSOR = "outdoor_sensor"
 CONF_EXTENDED = "extended_registers"
 CONF_WC_INTERVAL = "wc_interval"
 CONF_HOT_WATER = "hot_water"
+CONF_DHW_SCHEDULE = "dhw_schedule"
 DEFAULT_HOT_WATER = True
 
 DEFAULT_SCAN_INTERVAL = 15  # seconds

@@ -39,14 +39,16 @@
           "extended_registers": "Read extended registers (outdoor temp, flow rate, compressor)",
           "scan_interval": "Poll interval",
           "wc_interval": "Minimum time between flow setpoint changes",
-          "hot_water": "Hot water cylinder"
+          "hot_water": "Hot water cylinder",
+          "dhw_schedule": "Hot water schedule"
         },
         "data_description": {
           "room_sensor": "The thermostat's room temperature. If empty, the Samsung controller's room sensor is used.",
           "power_sensor": "Used for COP. Should measure the whole outdoor unit in W or kW.",
           "weather_entity": "Hourly forecast is blended into the outdoor temperature.",
           "outdoor_sensor": "Leave empty to use the heat pump's own outdoor sensor.",
-          "hot_water": "Turn off for heating-only systems. The hot water controls and sensors are then hidden."
+          "hot_water": "Turn off for heating-only systems. The hot water controls and sensors are then hidden.",
+          "dhw_schedule": "Optional Schedule helper. Hot water turns on when a block starts and off when it ends. Changes made by hand last until the next block starts or ends."
         }
       }
     }

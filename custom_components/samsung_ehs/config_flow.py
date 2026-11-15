@@ -19,6 +19,7 @@ from homeassistant.helpers import selector
 from .api import EhsClient, EhsConnectionError
 from .simulator import SIM_PORT
 from .const import (
+    CONF_DHW_SCHEDULE,
     CONF_BAUDRATE,
     CONF_EXTENDED,
     CONF_HOT_WATER,
@@ -137,6 +138,7 @@ class EhsOptionsFlow(OptionsFlow):
                 vol.Required(
                     CONF_HOT_WATER, default=DEFAULT_HOT_WATER
                 ): selector.BooleanSelector(),
+                vol.Optional(CONF_DHW_SCHEDULE): _entity("schedule"),
                 vol.Required(
                     CONF_EXTENDED, default=DEFAULT_EXTENDED
                 ): selector.BooleanSelector(),

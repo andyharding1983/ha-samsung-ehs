@@ -366,3 +366,31 @@ async def test_cancel_boost_via_preset(hass: HomeAssistant, client) -> None:
         "button", "press", {"entity_id": "button.samsung_ehs_cancel_boost"}, blocking=True
     )
     assert hass.states.get("climate.samsung_ehs").attributes["preset_mode"] == "none"
+
+
+async def test_dhw_schedule(hass: HomeAssistant, client) -> None:
+    hass.states.async_set("schedule.hot_water", "off")
+    await _setup(hass, {"dhw_schedule": "schedule.hot_water"})
+    # Out of a block at startup: hot water turned off
+    client.write_indoor.assert_any_await(R.IU_DHW_POWER, 0)
+    dhw = hass.states.get("water_heater.samsung_ehs_hot_water")
+    assert dhw.attributes["schedule"] == "schedule.hot_water"
+    assert dhw.attributes["schedule_state"] == "off"
+
+    client.write_indoor.reset_mock()
+    hass.states.async_set("schedule.hot_water", "on")
+    await hass.async_block_till_done()
+    client.write_indoor.assert_any_await(R.IU_DHW_POWER, 1)
+
+    client.write_indoor.reset_mock()
+    hass.states.async_set("schedule.hot_water", "unavailable")
+    await hass.async_block_till_done()
+    client.write_indoor.assert_not_awaited()
+
+
+async def test_dhw_schedule_ignored_when_heating_only(hass: HomeAssistant, client) -> None:
+    hass.states.async_set("schedule.hot_water", "off")
+    await _setup(hass, {"dhw_schedule": "schedule.hot_water", "hot_water": False})
+    assert not any(
+        c.args[0] == R.IU_DHW_POWER for c in client.write_indoor.await_args_list
+    )
