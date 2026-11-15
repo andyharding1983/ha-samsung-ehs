@@ -20,6 +20,9 @@ from homeassistant.util import dt as dt_util
 from . import registers as R
 from .api import EhsClient, EhsConnectionError
 from .const import (
+    BOOST_DURATION_S,
+    WC_WIND_GAIN,
+    WC_WIND_THRESHOLD,
     CONF_EXTENDED,
     CONF_HOT_WATER,
     CONF_OUTDOOR_SENSOR,
@@ -46,7 +49,7 @@ from .const import (
 )
 from .control import AdaptiveCurve, Thermostat
 from .cop import EnergyTracker, heat_output_w, instant_cop
-from .weather_comp import WcParams, WcResult, compute
+from .weather_comp import WcParams, WcResult, compute, round_half
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -57,6 +60,27 @@ SAVE_EVERY = timedelta(minutes=5)
 
 OUTDOOR_RANGE = (-40.0, 50.0)
 ROOM_RANGE = (5.0, 35.0)
+
+
+_WIND_TO_MS = {
+    "m/s": 1.0,
+    "km/h": 1 / 3.6,
+    "mph": 0.44704,
+    "kn": 0.514444,
+    "ft/s": 0.3048,
+}
+
+
+def _wind_ms(value: Any, unit: str | None) -> float | None:
+    """Convert a weather wind speed to m/s (HA weather default is km/h)."""
+    try:
+        val = float(value)
+    except (TypeError, ValueError):
+        return None
+    factor = _WIND_TO_MS.get(unit or "km/h")
+    if factor is None or not 0 <= val < 100 / factor:
+        return None
+    return val * factor
 
 
 def _plausible(val: float | None, rng: tuple[float, float]) -> float | None:
@@ -124,7 +148,8 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         self._last_control: float | None = None
         self._last_flow_write: float | None = None
         self._control_lock = asyncio.Lock()
-        self._forecast: list[tuple[datetime, float]] | None = None
+        self._forecast: list[tuple[datetime, float, float | None]] | None = None
+        self.boost_until: datetime | None = None
         self._forecast_at: datetime | None = None
 
         # COP
@@ -250,12 +275,14 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
             self._forecast = None
             return
         items = (resp or {}).get(self.weather_entity, {}).get("forecast", [])
-        parsed: list[tuple[datetime, float]] = []
+        unit = self._wind_unit()
+        parsed: list[tuple[datetime, float, float | None]] = []
         for item in items:
             ts = dt_util.parse_datetime(str(item.get("datetime")))
             temp = item.get("temperature")
             if ts is not None and temp is not None:
-                parsed.append((dt_util.as_utc(ts), float(temp)))
+                wind = _wind_ms(item.get("wind_speed"), unit)
+                parsed.append((dt_util.as_utc(ts), float(temp), wind))
         self._forecast = parsed
         self._forecast_at = now
 
@@ -264,8 +291,31 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
             return None
         now = dt_util.utcnow()
         end = now + timedelta(hours=hours)
-        temps = [t for ts, t in self._forecast if now - timedelta(hours=1) < ts <= end]
+        temps = [t for ts, t, _w in self._forecast if now - timedelta(hours=1) < ts <= end]
         return temps or None
+
+    def _wind_unit(self) -> str | None:
+        st = self.hass.states.get(self.weather_entity) if self.weather_entity else None
+        return st.attributes.get("wind_speed_unit") if st else None
+
+    def wind_speed(self, hours: float) -> float | None:
+        """Mean wind (m/s): now plus the forecast over the look-ahead."""
+        if not self.weather_entity:
+            return None
+        st = self.hass.states.get(self.weather_entity)
+        winds: list[float] = []
+        if st is not None:
+            now_w = _wind_ms(st.attributes.get("wind_speed"), self._wind_unit())
+            if now_w is not None:
+                winds.append(now_w)
+        if self._forecast and hours > 0:
+            now = dt_util.utcnow()
+            end = now + timedelta(hours=hours)
+            winds += [
+                w for ts, _t, w in self._forecast
+                if w is not None and now - timedelta(hours=1) < ts <= end
+            ]
+        return round(sum(winds) / len(winds), 1) if winds else None
 
     def params(self) -> WcParams:
         p = self.wc_params
@@ -282,6 +332,8 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
             flow_min=p["wc_flow_min"],
             flow_max=p["wc_flow_max"],
             heating_cutoff=p["wc_heating_cutoff"],
+            wind_gain=p[WC_WIND_GAIN],
+            wind_threshold=p[WC_WIND_THRESHOLD],
         )
 
     async def async_set_wc_param(self, key: str, value: float) -> None:
@@ -338,6 +390,23 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         self.thermostat.force(time.monotonic(), enabled)
         await self.async_control(force_flow=True)
 
+    @property
+    def boost_active(self) -> bool:
+        return self.boost_until is not None and dt_util.utcnow() < self.boost_until
+
+    async def async_start_boost(self) -> None:
+        """Run at maximum flow for an hour; pressing again restarts the hour."""
+        self.boost_until = dt_util.utcnow() + timedelta(seconds=BOOST_DURATION_S)
+        _LOGGER.info("Boost until %s", self.boost_until)
+        await self.async_control(force_flow=True)
+
+    async def async_cancel_boost(self) -> None:
+        if self.boost_until is None:
+            return
+        self.boost_until = None
+        _LOGGER.info("Boost cancelled")
+        await self.async_control(force_flow=True)
+
     async def async_control(self, force_flow: bool = False) -> None:
         """Thermostat, adaptive offset and weather compensation in one pass."""
         if self._control_lock.locked():
@@ -361,12 +430,22 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
             self.thermostat.last_change = now
             self._thermostat_synced = True
 
+        boosting = self.boost_active
+        if self.boost_until is not None and not boosting:
+            _LOGGER.info("Boost finished")
+            self.boost_until = None
+            force_flow = True
+
         room = self.room_temp()
         target = self.room_target
-        # Learn only while actually space heating: not paused, defrosting or
-        # diverted to the hot water cylinder.
+        # Learn only while space heating under normal control: not paused,
+        # boosting, defrosting or diverted to the hot water cylinder.
         running = (
-            self.heating_enabled and data.power and not data.defrost and not (self.hot_water and data.dhw_active)
+            self.heating_enabled
+            and data.power
+            and not boosting
+            and not data.defrost
+            and not (self.hot_water and data.dhw_active)
         )
         prev = self.wc_result
         self.adaptive.update(
@@ -392,17 +471,26 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
                 p, outdoor, self._forecast_window(p.forecast_hours), room,
                 offset_design=self.adaptive.design,
                 offset_mild=self.adaptive.mild,
+                wind=self.wind_speed(p.forecast_hours),
             )
         self.wc_result = result
         heating_needed = result.heating_needed if result else True
 
-        calling = self.thermostat.update(now, room, target, heating_needed)
-        want_on = self.heating_enabled and calling
+        if boosting:
+            # Counts as a run, so the minimum on time applies afterwards.
+            self.thermostat.force(now, True)
+            calling = True
+        else:
+            calling = self.thermostat.update(now, room, target, heating_needed)
+        want_on = boosting or (self.heating_enabled and calling)
 
         if want_on != data.power or (want_on and data.mode != R.Mode.HEAT):
             await self._async_set_power(want_on, data)
 
-        if want_on and result is not None:
+        if boosting:
+            flow = round_half(min(self.wc_params["wc_flow_max"], R.FLOW_SET_MAX))
+            await self._async_write_flow(flow, data, now, force_flow)
+        elif want_on and result is not None:
             await self._async_write_flow(result.flow_target, data, now, force_flow)
 
         self.async_update_listeners()

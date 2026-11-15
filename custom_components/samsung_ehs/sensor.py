@@ -54,12 +54,15 @@ def _wc_attrs(c: EhsCoordinator) -> dict[str, Any] | None:
         "curve_flow": r.curve_flow,
         "adaptive_offset": r.curve_offset,
         "room_offset": r.room_offset,
+        "wind_offset": r.wind_offset,
+        "wind_speed": r.wind_speed,
         "effective_outdoor": r.effective_outdoor,
         "forecast_mean": r.forecast_mean,
         "limited": r.limited,
         "heating_needed": r.heating_needed,
         "heat_demand": c.thermostat.calling,
         "last_write": c.wc_last_write.isoformat() if c.wc_last_write else None,
+        "boost_until": c.boost_until.isoformat() if c.boost_active else None,
     }
 
 

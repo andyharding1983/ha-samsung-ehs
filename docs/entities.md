@@ -24,6 +24,7 @@ device, the IDs follow the new name.
  outdoor temp ─────┼─► effective outdoor ─► heating curve ─┐
                    │                                       ├─► Flow target ──(write)──► Flow setpoint (on the unit)
  room temp ────────┼─► room offset (instant) ──────────────┤                                   │
+ wind (now+fcst) ──┼─► wind offset ────────────────────────┤                                   │
                    └─► learned curve offset (slow) ────────┘                                   ▼
                                                                                     heat pump heats water to it
  room temp vs target ─► thermostat ─► Heat demand ─(write on/off)─► unit space heating on/off
@@ -34,7 +35,7 @@ On every poll (15 s by default) Home Assistant:
 1. **Reads** the unit.
 2. **Updates the learned curve offsets** at each end of the curve from the room error. This only happens while space heating is actually running:
    not paused, not defrosting and not heating the hot water cylinder.
-3. **Calculates the Flow target** from the curve, the learned offset and the room offset.
+3. **Calculates the Flow target** from the curve, the learned offset, the room offset and the wind offset.
 4. **Runs the thermostat:** it pauses at *target + overshoot* and resumes at *target*, subject to the
    minimum on/off times.
 5. **Switches space heating** on or off at the unit if the thermostat state changed.
@@ -76,6 +77,11 @@ the Samsung controller's own sensor.
 | **Heat** | Home Assistant runs space heating on weather compensation and pauses and resumes it as a thermostat. |
 | **Off** | Space heating is switched off at the unit straight away (this ignores the minimum on time). Hot water is not affected. |
 
+| Preset | Behaviour |
+|---|---|
+| **None** | Normal control |
+| **Boost** | Maximum flow temperature for one hour, even if the room is warm or the mode is Off. Same as the *Boost heating* button. Pick *None*, or press *Cancel boost*, to end it early. See [Boost](#boost). |
+
 | HVAC action | Meaning |
 |---|---|
 | `heating` | Space heating on and compressor running |
@@ -91,6 +97,7 @@ Target range 5–28 °C in 0.5 °C steps. The mode and target are restored after
 | `flow_target` | Current Flow target (°C), see above |
 | `flow_temperature` | Actual flow temperature leaving the heat pump (°C) |
 | `adaptive_offset` | Learned curve offset applied right now (K), see *Learned curve offset* |
+| `boost_until` | When the current boost ends (UTC), or `null` if no boost is running |
 
 ---
 
@@ -143,10 +150,13 @@ show how it was worked out:
 | `curve_flow` | Flow temperature from the heating curve alone at `effective_outdoor` (°C) |
 | `adaptive_offset` | Learned correction applied at `effective_outdoor` (K), see *Learned curve offset* |
 | `room_offset` | Instant room correction = *Room influence gain* × (target − room), limited to ± *Room influence limit* (K) |
+| `wind_speed` | Wind used for the wind boost (m/s): the mean of the weather entity's current wind and the hourly forecast over *Forecast look-ahead*. `null` without a weather entity. |
+| `wind_offset` | Wind boost = *Wind boost gain* × (`wind_speed` − *Wind boost threshold*), from 0 to 3 K |
 | `limited` | `1` when the result is held at the maximum flow temperature, `-1` at the minimum, `0` otherwise. While it is held, curve learning doesn't wind up further in that direction. |
 | `heating_needed` | `false` when `effective_outdoor` is at or above the *Heating cut-off*. Heating then stays off. |
 | `heat_demand` | `true` while the thermostat is calling for heat |
 | `last_write` | When a flow setpoint was last written to the unit (UTC). `null` since startup if nothing has been written yet. |
+| `boost_until` | When the current boost ends (UTC), or `null`. During a boost the unit is sent the maximum flow temperature instead of this sensor's value. |
 
 The state = `curve_flow` + `adaptive_offset` + `room_offset`, limited to the min/max flow temperature and
 rounded to 0.5 °C. Above the cut-off it equals the minimum flow temperature.
@@ -335,7 +345,6 @@ heavily on the flow rate reading. Treat it as a guide, not as metrology.
 | Entity | Meaning |
 |---|---|
 | `switch.samsung_ehs_quiet_mode` | Samsung quiet (silent) mode. Lower fan and compressor speed, so less capacity. |
-| `switch.samsung_ehs_away_mode` | Samsung away (outing) mode, using the setback settings on the Samsung controller |
 
 ---
 
@@ -391,6 +400,20 @@ the final result**, whatever produced it. Set the maximum for what your heat emi
 | `number.samsung_ehs_forecast_look_ahead` | 6 h | How far ahead to average the hourly forecast |
 | `number.samsung_ehs_forecast_weight` | 0.3 | 0 = ignore the forecast, 1 = use only the forecast. 0.3 = 70 % now + 30 % forecast. |
 
+### Wind boost
+
+Wind increases heat loss through draughts and wind-chilled walls, which the outdoor temperature alone
+doesn't capture. It needs a weather entity. Wind is read in whatever unit the weather entity uses and
+converted to m/s (1 m/s ≈ 2.2 mph ≈ 3.6 km/h).
+
+| Entity | Default | Meaning |
+|---|---|---|
+| `number.samsung_ehs_wind_boost_gain` | 0.3 | K of flow added per m/s of wind above the threshold. 0 turns wind boost off. |
+| `number.samsung_ehs_wind_boost_threshold` | 5 m/s | Wind below this (about 11 mph, a moderate breeze) adds nothing |
+
+With the defaults, 10 m/s (22 mph) adds 1.5 °C and 15 m/s (34 mph, a gale) adds the maximum of 3 °C.
+If the room still drops in strong wind, raise the gain. If it overshoots, lower it.
+
 ### Room influence (instant)
 
 | Entity | Default | Meaning |
@@ -409,6 +432,18 @@ the final result**, whatever produced it. Set the maximum for what your heat emi
 |---|---|
 | `button.samsung_ehs_apply_learned_curve` | Copy the learned offsets into the two curve points and reset them to zero |
 | `button.samsung_ehs_reset_curve_learning` | Discard the learned offsets |
+
+### Boost
+
+| Button | Meaning |
+|---|---|
+| `button.samsung_ehs_boost_heating` | Run space heating at the maximum flow temperature for one hour, even if the room is warm or the climate is Off. Pressing again restarts the hour. |
+| `button.samsung_ehs_cancel_boost` | End a boost early |
+
+The climate entity's *Boost* preset does the same thing. During a boost nothing is learned, so the curve
+isn't skewed. Afterwards the thermostat takes over again. The minimum on time counts from the start of
+the boost, so after an hour heating can pause straight away if the room is warm. A restart of Home
+Assistant cancels a boost.
 
 ### Thermostat
 

@@ -92,6 +92,8 @@ async def test_entities(hass: HomeAssistant, client) -> None:
     assert dhw.state == "standard"
     assert dhw.attributes["current_temperature"] == 45.5
     assert hass.states.get("switch.samsung_ehs_weather_compensation") is None
+    assert hass.states.get("switch.samsung_ehs_away_mode") is None
+    assert climate.attributes["preset_modes"] == ["none", "boost"]
 
 
 async def test_weather_compensation_always_on(hass: HomeAssistant, client) -> None:
@@ -305,3 +307,62 @@ async def test_curve_learning_and_apply(hass: HomeAssistant, client) -> None:
     assert hass.states.get(
         "number.samsung_ehs_curve_flow_at_mild_temperature"
     ).state == str(round(25.0 + m, 1))
+
+
+async def test_wind_boost_from_weather(hass: HomeAssistant, client) -> None:
+    hass.states.async_set("sensor.room", "21.0", {"unit_of_measurement": "°C"})
+    hass.states.async_set(
+        "weather.home", "windy",
+        {"temperature": 5.0, "wind_speed": 54.0, "wind_speed_unit": "km/h"},
+    )
+    await _setup(hass, {"room_sensor": "sensor.room", "weather_entity": "weather.home"})
+    wc = hass.states.get("sensor.samsung_ehs_flow_target")
+    # 54 km/h = 15 m/s; 0.3 * (15 - 5) = 3 K (the cap)
+    assert wc.attributes["wind_speed"] == 15.0
+    assert wc.attributes["wind_offset"] == 3.0
+
+
+async def test_boost(hass: HomeAssistant, client) -> None:
+    from homeassistant.util import dt as dt_util
+    from unittest.mock import patch as _patch
+
+    hass.states.async_set("sensor.room", "23.0", {"unit_of_measurement": "°C"})
+    await _setup(hass, {"room_sensor": "sensor.room"})
+    await hass.services.async_call(
+        "climate", "set_hvac_mode",
+        {"entity_id": "climate.samsung_ehs", "hvac_mode": "off"}, blocking=True,
+    )
+    client.write_indoor.reset_mock()
+    await hass.services.async_call(
+        "button", "press", {"entity_id": "button.samsung_ehs_boost_heating"}, blocking=True
+    )
+    # Boost overrides both "off" and a warm room: on, at max flow (45)
+    client.write_indoor.assert_any_await(R.IU_POWER, 1)
+    client.write_indoor.assert_any_await(R.IU_WATER_OUT_SET, 450)
+    climate = hass.states.get("climate.samsung_ehs")
+    assert climate.attributes["preset_mode"] == "boost"
+    assert climate.attributes["boost_until"] is not None
+
+    # An hour later it ends and heating goes back off
+    c = hass.config_entries.async_entries(DOMAIN)[0].runtime_data
+    client.write_indoor.reset_mock()
+    with _patch(
+        "custom_components.samsung_ehs.coordinator.dt_util.utcnow",
+        return_value=dt_util.utcnow() + timedelta(hours=1, seconds=1),
+    ):
+        await c.async_control()
+    client.write_indoor.assert_any_await(R.IU_POWER, 0)
+    assert c.boost_until is None
+
+
+async def test_cancel_boost_via_preset(hass: HomeAssistant, client) -> None:
+    await _setup(hass)
+    await hass.services.async_call(
+        "climate", "set_preset_mode",
+        {"entity_id": "climate.samsung_ehs", "preset_mode": "boost"}, blocking=True,
+    )
+    assert hass.states.get("climate.samsung_ehs").attributes["preset_mode"] == "boost"
+    await hass.services.async_call(
+        "button", "press", {"entity_id": "button.samsung_ehs_cancel_boost"}, blocking=True
+    )
+    assert hass.states.get("climate.samsung_ehs").attributes["preset_mode"] == "none"

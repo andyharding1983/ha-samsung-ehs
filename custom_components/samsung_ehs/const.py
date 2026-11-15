@@ -49,6 +49,8 @@ WC_MIN_ON = "wc_min_on"  # minutes; 20 => max 3 starts per hour
 WC_MIN_OFF = "wc_min_off"  # minutes
 WC_ADAPT_RATE = "wc_adapt_rate"  # K curve offset per hour per K room error
 WC_ADAPT_LIMIT = "wc_adapt_limit"  # K
+WC_WIND_GAIN = "wc_wind_gain"  # K flow per m/s above the threshold
+WC_WIND_THRESHOLD = "wc_wind_threshold"  # m/s
 
 # Heat emitter presets. Selecting an emitter type applies its values; they
 # can then be fine-tuned individually with the number entities.
@@ -92,7 +94,12 @@ WC_DEFAULTS: dict[str, float] = {
     WC_MIN_OFF: 0.0,
     WC_ADAPT_RATE: 0.25,
     WC_ADAPT_LIMIT: 5.0,
+    WC_WIND_GAIN: 0.3,
+    WC_WIND_THRESHOLD: 5.0,
 }
+
+# Boost: run at maximum flow for this long, regardless of the thermostat.
+BOOST_DURATION_S = 3600
 
 # Minimum change (K) before a new flow setpoint is written to the unit,
 # to avoid hammering the bus/EEPROM with tiny adjustments.

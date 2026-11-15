@@ -13,14 +13,14 @@ No cloud, no SmartThings.
 
 | Platform | Entities |
 |---|---|
-| Climate | Room thermostat: Heat/Off and room target temperature |
+| Climate | Room thermostat: Heat/Off, room target temperature, Boost preset |
 | Water heater | Hot water on/off, Eco / Standard / Power / Force, tank target (optional, for heating-only systems) |
-| Sensor | Flow, return, ΔT, hot water tank, outdoor temp, flow rate, compressor frequency, heat output, COP (instant / today / lifetime), heat energy, flow target, learned curve offset, error codes |
+| Sensor | Flow, return, ΔT, hot water tank, outdoor temp, flow rate, compressor frequency, heat output, electrical power, COP (instant / today / lifetime), heat and electrical energy, flow target, learned curve offset, error codes |
 | Binary sensor | Heat demand, defrost, compressor running, problem |
-| Switch | Quiet mode, away mode |
+| Switch | Quiet mode |
 | Select | Heat emitter type: underfloor or radiators, which applies sensible presets |
 | Number | Heating curve, thermostat and learning tuning |
-| Button | Apply learned curve, reset curve learning |
+| Button | Boost heating, cancel boost, apply learned curve, reset curve learning |
 
 📖 **[Full entity reference](docs/entities.md)**: every entity, attribute and setting explained, including
 [flow target vs flow setpoint](docs/entities.md#flow-target-vs-flow-setpoint).
@@ -75,13 +75,17 @@ Set a room target and Home Assistant does the rest. Turn off the Samsung control
 effective_outdoor = (1 − w) · outdoor_now + w · mean(forecast over next N hours)
 curve_flow        = straight line through (design outdoor, design flow) and (mild outdoor, mild flow)
 room_offset       = clamp(gain · (room_target − room_temp), ±limit)
-flow_setpoint     = clamp(curve_flow + adaptive_offset + room_offset, min flow, max flow), rounded to 0.5 °C
+wind_offset       = clamp(wind gain · (wind − wind threshold), 0 … 3 K)
+flow_setpoint     = clamp(curve_flow + adaptive_offset + room_offset + wind_offset, min flow, max flow), rounded to 0.5 °C
 ```
 
 * **Forecast blending** starts warming the house before a cold snap and eases off before a mild
   spell. This matters for slow systems such as underfloor heating. Set the weight to `0` to disable it.
 * **Room influence** reacts straight away to the room error. A gain of 3 means 1 °C below target
   raises the flow by 3 °C.
+* **Wind boost** adds flow when it's windy. It uses the wind now plus the forecast wind over the
+  look-ahead, so it starts before the room cools. The default is +0.3 °C per m/s above 5 m/s, up to +3 °C.
+  Set the gain to `0` to turn it off.
 * The **learned curve** adapts slowly. While space heating runs (not during defrost or hot water), the
   room error is learned separately at the **cold and mild ends of the curve**, so the curve's slope
   corrects itself as well as its level, and the room settles on target in all weathers. It won't wind
@@ -108,6 +112,14 @@ The `Flow target` sensor shows the working: curve flow, adaptive offset, room of
 effective outdoor temperature, forecast mean, heat demand and last write. The `Flow setpoint`
 diagnostic sensor is the value the unit is actually using. See
 [flow target vs flow setpoint](docs/entities.md#flow-target-vs-flow-setpoint).
+
+### Boost
+
+**Boost heating** (a button, or the climate entity's *Boost* preset) runs space heating at the maximum
+flow temperature for one hour, even if the thermostat is satisfied or set to Off. Pressing it again
+restarts the hour. **Cancel boost** ends it early. Nothing is learned during a boost. Afterwards normal
+control resumes, and the minimum on time counts from the start of the boost. A restart of Home Assistant
+cancels a boost.
 
 ### Seeing what it has learned
 

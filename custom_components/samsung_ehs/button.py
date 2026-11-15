@@ -1,4 +1,4 @@
-"""Buttons: fold the learned curve into the curve points, or reset learning."""
+"""Buttons: boost heating, and fold in or reset the learned curve."""
 
 from __future__ import annotations
 
@@ -18,7 +18,31 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     c = entry.runtime_data
-    async_add_entities([ApplyLearnedCurve(c), ResetLearning(c)])
+    async_add_entities(
+        [BoostHeating(c), CancelBoost(c), ApplyLearnedCurve(c), ResetLearning(c)]
+    )
+
+
+class BoostHeating(EhsEntity, ButtonEntity):
+    """Maximum flow for an hour, whatever the thermostat says."""
+
+    _attr_icon = "mdi:fire"
+
+    def __init__(self, coordinator: EhsCoordinator) -> None:
+        super().__init__(coordinator, "boost")
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_start_boost()
+
+
+class CancelBoost(EhsEntity, ButtonEntity):
+    _attr_icon = "mdi:fire-off"
+
+    def __init__(self, coordinator: EhsCoordinator) -> None:
+        super().__init__(coordinator, "cancel_boost")
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_cancel_boost()
 
 
 class ApplyLearnedCurve(EhsEntity, ButtonEntity):

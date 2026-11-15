@@ -2,7 +2,8 @@
 
 Pure logic, no Home Assistant imports, so it can be unit-tested directly.
 
-flow = curve(effective_outdoor) + learned(effective_outdoor) + clamp(gain * (room_target - room_temp))
+flow = curve(effective_outdoor) + learned(effective_outdoor)
+       + clamp(gain * (room_target - room_temp)) + wind boost
 
 * curve: straight line through (outdoor_design, flow_design) and
   (outdoor_mild, flow_mild), clamped to [flow_min, flow_max].
@@ -13,6 +14,8 @@ flow = curve(effective_outdoor) + learned(effective_outdoor) + clamp(gain * (roo
 * learned: blend of the corrections learned at each curve end (control.py),
   so learning can change the slope as well as the level.
 * room influence: proportional correction from a reference room sensor.
+* wind boost: extra flow when the wind (now + forecast) is above a
+  threshold, for the extra heat loss from draughts and wind-chilled walls.
 """
 
 from __future__ import annotations
@@ -37,6 +40,8 @@ class WcParams:
     flow_min: float = 20.0
     flow_max: float = 55.0
     heating_cutoff: float = 17.0
+    wind_gain: float = 0.0  # K flow per m/s above wind_threshold
+    wind_threshold: float = 5.0  # m/s
 
 
 @dataclass(frozen=True)
@@ -51,7 +56,12 @@ class WcResult:
     forecast_mean: float | None
     heating_needed: bool
     limited: int = 0
-    design_weight: float = 0.5  # share of the cold curve end at effective_outdoor  # +1 held at flow_max, -1 held at flow_min, 0 free
+    design_weight: float = 0.5  # share of the cold curve end at effective_outdoor
+    wind_offset: float = 0.0  # K added for wind
+    wind_speed: float | None = None  # m/s used for wind_offset
+
+
+WIND_MAX_OFFSET = 3.0  # K
 
 
 def _clamp(val: float, lo: float, hi: float) -> float:
@@ -85,6 +95,13 @@ def room_offset(p: WcParams, room_temp: float | None) -> float:
         return 0.0
     off = p.room_gain * (p.room_target - room_temp)
     return round(_clamp(off, -p.room_max_offset, p.room_max_offset), 2)
+
+
+def wind_offset(p: WcParams, wind_ms: float | None) -> float:
+    """Extra flow for wind above the threshold, capped at WIND_MAX_OFFSET."""
+    if wind_ms is None or p.wind_gain <= 0:
+        return 0.0
+    return round(_clamp(p.wind_gain * (wind_ms - p.wind_threshold), 0.0, WIND_MAX_OFFSET), 2)
 
 
 def design_weight(p: WcParams, eff_outdoor: float) -> float:
@@ -133,6 +150,7 @@ def compute(
     room_temp: float | None = None,
     offset_design: float = 0.0,
     offset_mild: float = 0.0,
+    wind: float | None = None,
 ) -> WcResult:
     """Calculate the flow temperature target.
 
@@ -153,10 +171,12 @@ def compute(
             forecast_mean=fmean_,
             heating_needed=False,
             design_weight=w_d,
+            wind_speed=wind,
         )
     base = curve_flow(p, eff)
     off = room_offset(p, room_temp)
-    raw = base + curve_offset + off
+    w_off = wind_offset(p, wind)
+    raw = base + curve_offset + off + w_off
     flow = _clamp(raw, p.flow_min, p.flow_max)
     limited = 1 if raw > p.flow_max else -1 if raw < p.flow_min else 0
     return WcResult(
@@ -169,4 +189,6 @@ def compute(
         heating_needed=True,
         limited=limited,
         design_weight=w_d,
+        wind_offset=w_off,
+        wind_speed=wind,
     )

@@ -140,9 +140,6 @@
     "switch": {
       "quiet": {
         "name": "Quiet mode"
-      },
-      "away": {
-        "name": "Away mode"
       }
     },
     "number": {
@@ -193,6 +190,12 @@
       },
       "wc_adapt_limit": {
         "name": "Adaptive offset limit"
+      },
+      "wc_wind_gain": {
+        "name": "Wind boost gain"
+      },
+      "wc_wind_threshold": {
+        "name": "Wind boost threshold"
       }
     },
     "water_heater": {
@@ -227,6 +230,12 @@
       },
       "reset_learning": {
         "name": "Reset curve learning"
+      },
+      "boost": {
+        "name": "Boost heating"
+      },
+      "cancel_boost": {
+        "name": "Cancel boost"
       }
     }
   }

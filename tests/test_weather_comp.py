@@ -79,3 +79,15 @@ def test_curve_points_follow_curve_and_offsets():
     assert by_t[6.0]["learned"] == 33.5  # midway: +1 K
     assert by_t[-8.0]["set"] == 44.2 and by_t[-8.0]["learned"] == 45.0  # clamped
     assert pts[-1]["outdoor"] == p.heating_cutoff
+
+
+def test_wind_boost():
+    p = W.WcParams(wind_gain=0.3, wind_threshold=5.0)
+    assert W.wind_offset(p, None) == 0.0
+    assert W.wind_offset(p, 4.0) == 0.0
+    assert W.wind_offset(p, 10.0) == 1.5
+    assert W.wind_offset(p, 40.0) == W.WIND_MAX_OFFSET
+    calm = W.compute(p, 5.0, wind=2.0)
+    windy = W.compute(p, 5.0, wind=10.0)
+    assert windy.wind_offset == 1.5 and windy.wind_speed == 10.0
+    assert windy.flow_target - calm.flow_target == pytest.approx(1.5, abs=0.5)

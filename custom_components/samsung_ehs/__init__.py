@@ -64,8 +64,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: EhsConfigEntry) -> bool:
         await coordinator.async_shutdown()
         raise
     entry.runtime_data = coordinator
-    if not coordinator.hot_water:
-        _remove_hot_water_entities(hass, entry)
+    _remove_stale_entities(hass, entry, coordinator.hot_water)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     # Entities have now restored the room target, on/off and tuning values.
     coordinator.ready = True
@@ -77,12 +76,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: EhsConfigEntry) -> bool:
 
 
 HOT_WATER_ENTITIES = (("water_heater", "hot_water"), ("sensor", "dhw_temp"))
+# Entities that earlier versions created and that no longer exist.
+REMOVED_ENTITIES = (("switch", "away"),)
 
 
-def _remove_hot_water_entities(hass: HomeAssistant, entry: EhsConfigEntry) -> None:
-    """Drop hot water entities left over from before the option was turned off."""
+def _remove_stale_entities(
+    hass: HomeAssistant, entry: EhsConfigEntry, hot_water: bool
+) -> None:
+    """Drop removed entities, and hot water ones when hot water is turned off."""
     reg = er.async_get(hass)
-    for domain, key in HOT_WATER_ENTITIES:
+    stale = REMOVED_ENTITIES + (() if hot_water else HOT_WATER_ENTITIES)
+    for domain, key in stale:
         if entity_id := reg.async_get_entity_id(domain, DOMAIN, f"{entry.entry_id}_{key}"):
             reg.async_remove(entity_id)
 

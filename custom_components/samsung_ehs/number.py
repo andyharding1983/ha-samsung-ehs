@@ -33,6 +33,8 @@ from .const import (
     WC_MIN_ON,
     WC_ROOM_GAIN,
     WC_ROOM_MAX_OFFSET,
+    WC_WIND_GAIN,
+    WC_WIND_THRESHOLD,
 )
 from .coordinator import EhsCoordinator
 from .entity import EhsEntity
@@ -57,6 +59,23 @@ def _t(key: str, lo: float, hi: float, step: float = 0.5):
 
 
 NUMBERS: tuple[WcNumberDescription, ...] = (
+    WcNumberDescription(
+        key=WC_WIND_GAIN,
+        native_min_value=0,
+        native_max_value=1,
+        native_step=0.05,
+        mode=NumberMode.BOX,
+        entity_category=EntityCategory.CONFIG,
+    ),
+    WcNumberDescription(
+        key=WC_WIND_THRESHOLD,
+        native_min_value=0,
+        native_max_value=20,
+        native_step=0.5,
+        native_unit_of_measurement="m/s",
+        mode=NumberMode.BOX,
+        entity_category=EntityCategory.CONFIG,
+    ),
     _t(WC_OUTDOOR_DESIGN, -20, 5),
     _t(WC_FLOW_DESIGN, 25, 55),
     _t(WC_OUTDOOR_MILD, 5, 20),

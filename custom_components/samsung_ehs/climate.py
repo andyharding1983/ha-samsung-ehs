@@ -15,6 +15,8 @@ from homeassistant.components.climate import (
     ClimateEntityFeature,
     HVACAction,
     HVACMode,
+    PRESET_BOOST,
+    PRESET_NONE,
 )
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
@@ -50,7 +52,9 @@ class EhsThermostat(EhsEntity, ClimateEntity, RestoreEntity):
         ClimateEntityFeature.TARGET_TEMPERATURE
         | ClimateEntityFeature.TURN_ON
         | ClimateEntityFeature.TURN_OFF
+        | ClimateEntityFeature.PRESET_MODE
     )
+    _attr_preset_modes = [PRESET_NONE, PRESET_BOOST]
 
     def __init__(self, coordinator: EhsCoordinator) -> None:
         super().__init__(coordinator, "heating")
@@ -73,7 +77,7 @@ class EhsThermostat(EhsEntity, ClimateEntity, RestoreEntity):
     def hvac_action(self) -> HVACAction | None:
         c = self.coordinator
         d = c.data
-        if not c.heating_enabled:
+        if not c.heating_enabled and not c.boost_active:
             return HVACAction.OFF
         if d is None:
             return None
@@ -102,7 +106,18 @@ class EhsThermostat(EhsEntity, ClimateEntity, RestoreEntity):
             "flow_target": r.flow_target if r else None,
             "flow_temperature": c.data.water_out if c.data else None,
             "adaptive_offset": c.adaptive_offset,
+            "boost_until": c.boost_until.isoformat() if c.boost_active else None,
         }
+
+    @property
+    def preset_mode(self) -> str:
+        return PRESET_BOOST if self.coordinator.boost_active else PRESET_NONE
+
+    async def async_set_preset_mode(self, preset_mode: str) -> None:
+        if preset_mode == PRESET_BOOST:
+            await self.coordinator.async_start_boost()
+        else:
+            await self.coordinator.async_cancel_boost()
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         temp = kwargs.get(ATTR_TEMPERATURE)

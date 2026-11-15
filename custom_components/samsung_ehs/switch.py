@@ -1,4 +1,4 @@
-"""Switches for Samsung EHS: quiet and away mode."""
+"""Switches for Samsung EHS: quiet mode."""
 
 from __future__ import annotations
 
@@ -23,7 +23,6 @@ async def async_setup_entry(
     async_add_entities(
         [
             EhsRegisterSwitch(c, "quiet", R.IU_QUIET, lambda d: d.quiet),
-            EhsRegisterSwitch(c, "away", R.IU_AWAY, lambda d: d.away),
         ]
     )
 
