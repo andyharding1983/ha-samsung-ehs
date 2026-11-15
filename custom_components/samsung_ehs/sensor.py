@@ -55,6 +55,7 @@ def _wc_attrs(c: EhsCoordinator) -> dict[str, Any] | None:
         "room_offset": r.room_offset,
         "effective_outdoor": r.effective_outdoor,
         "forecast_mean": r.forecast_mean,
+        "limited": r.limited,
         "heating_needed": r.heating_needed,
         "heat_demand": c.thermostat.calling,
         "last_write": c.wc_last_write.isoformat() if c.wc_last_write else None,
@@ -70,7 +71,7 @@ def _adaptive_attrs(c: EhsCoordinator) -> dict[str, Any]:
         "mild_end_offset": round(a.mild, 2),
         "learned_flow_at_design": round(p["wc_flow_design"] + a.design, 1),
         "learned_flow_at_mild": round(p["wc_flow_mild"] + a.mild, 1),
-        "design_weight": c.wc_result.design_weight if c.wc_result else None,
+        "design_weight": round(c.wc_result.design_weight, 2) if c.wc_result else None,
     }
 
 

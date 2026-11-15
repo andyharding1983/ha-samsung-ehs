@@ -102,6 +102,7 @@ async def test_weather_compensation_always_on(hass: HomeAssistant, client) -> No
     wc = hass.states.get("sensor.samsung_ehs_flow_target")
     assert float(wc.state) == 36.5
     assert wc.attributes["room_offset"] == 3.0
+    assert wc.attributes["limited"] == 0
     assert wc.attributes["last_write"] is not None
 
 
