@@ -253,6 +253,8 @@ series:
   - entity: sensor.samsung_ehs_learned_curve_offset
     name: Set curve
     extend_to: false
+    show:
+      legend_value: false
     color: '#9e9e9e'
     data_generator: |
       const LO = -10, HI = 20, t0 = start.getTime(), w = end.getTime() - t0;
@@ -262,6 +264,8 @@ series:
   - entity: sensor.samsung_ehs_learned_curve_offset
     name: Learned curve
     extend_to: false
+    show:
+      legend_value: false
     color: '#ff7043'
     data_generator: |
       const LO = -10, HI = 20, t0 = start.getTime(), w = end.getTime() - t0;
@@ -271,6 +275,8 @@ series:
   - entity: sensor.samsung_ehs_flow_target
     name: Flow target now
     extend_to: false
+    show:
+      legend_value: false
     color: '#29b6f6'
     data_generator: |
       const LO = -10, HI = 20, t0 = start.getTime(), w = end.getTime() - t0;
