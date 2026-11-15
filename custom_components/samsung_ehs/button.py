@@ -18,9 +18,12 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     c = entry.runtime_data
-    async_add_entities(
-        [BoostHeating(c), CancelBoost(c), ApplyLearnedCurve(c), ResetLearning(c)]
-    )
+    buttons: list[ButtonEntity] = [
+        BoostHeating(c), CancelBoost(c), ApplyLearnedCurve(c), ResetLearning(c)
+    ]
+    if c.hot_water:
+        buttons += [BoostHotWater(c), CancelHotWaterBoost(c)]
+    async_add_entities(buttons)
 
 
 class BoostHeating(EhsEntity, ButtonEntity):
@@ -43,6 +46,28 @@ class CancelBoost(EhsEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         await self.coordinator.async_cancel_boost()
+
+
+class BoostHotWater(EhsEntity, ButtonEntity):
+    """Hot water on for an hour, then back to the schedule / previous state."""
+
+    _attr_icon = "mdi:water-boiler"
+
+    def __init__(self, coordinator: EhsCoordinator) -> None:
+        super().__init__(coordinator, "boost_hot_water")
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_start_dhw_boost()
+
+
+class CancelHotWaterBoost(EhsEntity, ButtonEntity):
+    _attr_icon = "mdi:water-boiler-off"
+
+    def __init__(self, coordinator: EhsCoordinator) -> None:
+        super().__init__(coordinator, "cancel_hot_water_boost")
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_end_dhw_boost()
 
 
 class ApplyLearnedCurve(EhsEntity, ButtonEntity):

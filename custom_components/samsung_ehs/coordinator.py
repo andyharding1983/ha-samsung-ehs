@@ -156,6 +156,8 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         self._control_lock = asyncio.Lock()
         self._forecast: list[tuple[datetime, float, float | None]] | None = None
         self.boost_until: datetime | None = None
+        self.dhw_boost_until: datetime | None = None
+        self._dhw_boost_restore = False
         self._forecast_at: datetime | None = None
 
         # COP
@@ -236,13 +238,21 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
             self.hass, self._async_apply_schedule(new.state), "samsung_ehs dhw schedule"
         )
 
+    def _schedule_state(self) -> bool | None:
+        st = self.hass.states.get(self.dhw_schedule) if self.dhw_schedule else None
+        if st is None or st.state not in ("on", "off"):
+            return None
+        return st.state == "on"
+
     async def _async_apply_schedule(self, state: str) -> None:
-        if state not in ("on", "off"):
-            return  # unavailable/unknown: leave hot water alone
-        on = state == "on"
+        if state not in ("on", "off") or self.dhw_boost_active:
+            return  # unavailable/unknown, or boosting: leave hot water alone
+        await self._async_set_dhw(state == "on", "schedule")
+
+    async def _async_set_dhw(self, on: bool, why: str) -> None:
         if self.data is not None and self.data.dhw_power == on:
             return
-        _LOGGER.info("Hot water schedule: %s", "on" if on else "off")
+        _LOGGER.info("Hot water %s (%s)", "on" if on else "off", why)
         try:
             await self.client.write_indoor(R.IU_DHW_POWER, 1 if on else 0)
         except EhsConnectionError as err:
@@ -251,6 +261,34 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         if self.data is not None:
             self.data.dhw_power = on
         self.async_update_listeners()
+
+    # ------------------------------------------------------- hot water boost
+    @property
+    def dhw_boost_active(self) -> bool:
+        return self.dhw_boost_until is not None and dt_util.utcnow() < self.dhw_boost_until
+
+    async def async_start_dhw_boost(self) -> None:
+        """Hot water on for an hour; pressing again restarts the hour."""
+        if not self.dhw_boost_active:
+            self._dhw_boost_restore = bool(self.data and self.data.dhw_power)
+        self.dhw_boost_until = dt_util.utcnow() + timedelta(seconds=BOOST_DURATION_S)
+        await self._async_set_dhw(True, f"boost until {self.dhw_boost_until}")
+        self.async_update_listeners()
+
+    async def async_end_dhw_boost(self) -> None:
+        """End the boost: follow the schedule if there is one, else restore."""
+        if self.dhw_boost_until is None:
+            return
+        self.dhw_boost_until = None
+        on = self._schedule_state()
+        if on is None:
+            on = self._dhw_boost_restore
+        await self._async_set_dhw(on, "boost ended")
+        self.async_update_listeners()
+
+    def clear_dhw_boost(self) -> None:
+        """Hot water changed by hand: drop the boost without restoring."""
+        self.dhw_boost_until = None
 
     # ---------------------------------------------------------------- polling
     async def _async_update_data(self) -> R.EhsData:
@@ -480,6 +518,9 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
             self.thermostat.calling = data.power or not self.heating_enabled
             self.thermostat.last_change = now
             self._thermostat_synced = True
+
+        if self.dhw_boost_until is not None and not self.dhw_boost_active:
+            await self.async_end_dhw_boost()
 
         boosting = self.boost_active
         if self.boost_until is not None and not boosting:

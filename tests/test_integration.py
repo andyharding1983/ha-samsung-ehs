@@ -394,3 +394,50 @@ async def test_dhw_schedule_ignored_when_heating_only(hass: HomeAssistant, clien
     assert not any(
         c.args[0] == R.IU_DHW_POWER for c in client.write_indoor.await_args_list
     )
+
+
+async def test_dhw_boost_restores_schedule(hass: HomeAssistant, client) -> None:
+    from homeassistant.util import dt as dt_util
+    from unittest.mock import patch as _patch
+
+    client.read_all.return_value = _snapshot(dhw_power=False)
+    hass.states.async_set("schedule.hot_water", "off")
+    await _setup(hass, {"dhw_schedule": "schedule.hot_water"})
+    client.write_indoor.reset_mock()
+    await hass.services.async_call(
+        "button", "press", {"entity_id": "button.samsung_ehs_boost_hot_water"}, blocking=True
+    )
+    client.write_indoor.assert_any_await(R.IU_DHW_POWER, 1)
+    assert hass.states.get("water_heater.samsung_ehs_hot_water").attributes["boost_until"]
+
+    # A schedule "off" edge during the boost is ignored
+    client.write_indoor.reset_mock()
+    hass.states.async_set("schedule.hot_water", "on")
+    await hass.async_block_till_done()
+    hass.states.async_set("schedule.hot_water", "off")
+    await hass.async_block_till_done()
+    assert not any(c.args == (R.IU_DHW_POWER, 0) for c in client.write_indoor.await_args_list)
+
+    # After the hour it follows the schedule again (off)
+    c = hass.config_entries.async_entries(DOMAIN)[0].runtime_data
+    with _patch(
+        "custom_components.samsung_ehs.coordinator.dt_util.utcnow",
+        return_value=dt_util.utcnow() + timedelta(hours=1, seconds=1),
+    ):
+        await c.async_control()
+    client.write_indoor.assert_any_await(R.IU_DHW_POWER, 0)
+    assert c.dhw_boost_until is None
+
+
+async def test_dhw_boost_cancel_restores_previous(hass: HomeAssistant, client) -> None:
+    client.read_all.return_value = _snapshot(dhw_power=False)
+    await _setup(hass)
+    await hass.services.async_call(
+        "button", "press", {"entity_id": "button.samsung_ehs_boost_hot_water"}, blocking=True
+    )
+    client.write_indoor.reset_mock()
+    await hass.services.async_call(
+        "button", "press",
+        {"entity_id": "button.samsung_ehs_cancel_hot_water_boost"}, blocking=True,
+    )
+    client.write_indoor.assert_any_await(R.IU_DHW_POWER, 0)  # was off before

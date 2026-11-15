@@ -238,6 +238,12 @@
       },
       "cancel_boost": {
         "name": "Cancel boost"
+      },
+      "boost_hot_water": {
+        "name": "Boost hot water"
+      },
+      "cancel_hot_water_boost": {
+        "name": "Cancel hot water boost"
       }
     }
   }

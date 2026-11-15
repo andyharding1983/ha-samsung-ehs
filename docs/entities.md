@@ -122,6 +122,18 @@ Home Assistant doesn't add any logic of its own here.
 
 Target range 30–70 °C. The current temperature is the cylinder sensor.
 
+### Hot water boost
+
+| Button | Meaning |
+|---|---|
+| `button.samsung_ehs_boost_hot_water` | Hot water on for one hour, keeping the current mode and target. Pressing again restarts the hour. |
+| `button.samsung_ehs_cancel_hot_water_boost` | End it early |
+
+When the boost ends, hot water follows the schedule if one is set (and available). Otherwise it goes back
+to how it was before the boost. Schedule changes during a boost are ignored. Switching hot water off by
+hand ends the boost. A restart of Home Assistant cancels a boost. The water heater's `boost_until`
+attribute shows when the boost ends.
+
 ### Hot water schedule
 
 Optional. Set it up in three steps:
@@ -140,6 +152,7 @@ Optional. Set it up in three steps:
 
 | Attribute | Meaning |
 |---|---|
+| `boost_until` | When the hot water boost ends (UTC), or `null` |
 | `schedule` | The schedule helper being followed |
 | `schedule_state` | `on` inside a block, `off` outside |
 | `next_schedule_change` | When the schedule next turns on or off |

@@ -20,7 +20,7 @@ No cloud, no SmartThings.
 | Switch | Quiet mode |
 | Select | Heat emitter type: underfloor or radiators, which applies sensible presets |
 | Number | Heating curve, thermostat and learning tuning |
-| Button | Boost heating, cancel boost, apply learned curve, reset curve learning |
+| Button | Boost heating, boost hot water (1 h), cancel either, apply learned curve, reset curve learning |
 
 📖 **[Full entity reference](docs/entities.md)**: every entity, attribute and setting explained, including
 [flow target vs flow setpoint](docs/entities.md#flow-target-vs-flow-setpoint).

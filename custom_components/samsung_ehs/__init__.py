@@ -76,7 +76,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: EhsConfigEntry) -> bool:
     return True
 
 
-HOT_WATER_ENTITIES = (("water_heater", "hot_water"), ("sensor", "dhw_temp"))
+HOT_WATER_ENTITIES = (
+    ("water_heater", "hot_water"),
+    ("sensor", "dhw_temp"),
+    ("button", "boost_hot_water"),
+    ("button", "cancel_hot_water_boost"),
+)
 # Entities that earlier versions created and that no longer exist.
 REMOVED_ENTITIES = (("switch", "away"),)
 

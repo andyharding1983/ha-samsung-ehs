@@ -76,14 +76,17 @@ class EhsWaterHeater(EhsEntity, WaterHeaterEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         c = self.coordinator
-        if not c.dhw_schedule:
-            return None
-        st = c.hass.states.get(c.dhw_schedule)
-        return {
-            "schedule": c.dhw_schedule,
-            "schedule_state": st.state if st else None,
-            "next_schedule_change": st.attributes.get("next_event") if st else None,
+        attrs: dict[str, Any] = {
+            "boost_until": c.dhw_boost_until.isoformat() if c.dhw_boost_active else None
         }
+        if c.dhw_schedule:
+            st = c.hass.states.get(c.dhw_schedule)
+            attrs |= {
+                "schedule": c.dhw_schedule,
+                "schedule_state": st.state if st else None,
+                "next_schedule_change": st.attributes.get("next_event") if st else None,
+            }
+        return attrs
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         temp = kwargs.get(ATTR_TEMPERATURE)
@@ -92,6 +95,7 @@ class EhsWaterHeater(EhsEntity, WaterHeaterEntity):
 
     async def async_set_operation_mode(self, operation_mode: str) -> None:
         if operation_mode == STATE_OFF:
+            self.coordinator.clear_dhw_boost()
             await self.coordinator.async_write(R.IU_DHW_POWER, 0)
             return
         await self.coordinator.async_write(R.IU_DHW_MODE, int(STATE_TO_DHW[operation_mode]))
@@ -102,4 +106,5 @@ class EhsWaterHeater(EhsEntity, WaterHeaterEntity):
         await self.coordinator.async_write(R.IU_DHW_POWER, 1)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
+        self.coordinator.clear_dhw_boost()
         await self.coordinator.async_write(R.IU_DHW_POWER, 0)
