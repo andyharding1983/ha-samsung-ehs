@@ -65,7 +65,10 @@ SENSORS: tuple[EhsSensorDescription, ...] = (
     EhsSensorDescription(key="flow_temp", **TEMP, value_fn=lambda c: c.data.water_out),
     EhsSensorDescription(key="return_temp", **TEMP, value_fn=lambda c: c.data.water_in),
     EhsSensorDescription(
-        key="flow_setpoint", **TEMP, value_fn=lambda c: c.data.water_out_set
+        key="flow_setpoint",
+        **TEMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda c: c.data.water_out_set,
     ),
     EhsSensorDescription(
         key="delta_t",

@@ -1,0 +1,261 @@
+# Entity reference
+
+Every entity the integration creates, what it means, and every attribute it exposes.
+
+Entity IDs below assume the default device name **Samsung EHS** and an English UI. If you rename the
+device, the IDs follow the new name.
+
+* [How the control loop fits together](#how-the-control-loop-fits-together)
+* [Climate: room thermostat](#climate-room-thermostat)
+* [Water heater: hot water](#water-heater-hot-water)
+* [Sensors](#sensors)
+* [Binary sensors](#binary-sensors)
+* [Switches](#switches)
+* [Numbers: tuning](#numbers-tuning)
+* [Diagnostic entities](#diagnostic-entities)
+
+---
+
+## How the control loop fits together
+
+```
+ weather forecast ─┐
+ outdoor temp ─────┼─► effective outdoor ─► heating curve ─┐
+                   │                                       ├─► Flow target ──(write)──► Flow setpoint (on the unit)
+ room temp ────────┼─► room offset (instant) ──────────────┤                                   │
+                   └─► adaptive offset (slow, learned) ────┘                                   ▼
+                                                                                    heat pump heats water to it
+ room temp vs target ─► thermostat ─► Heat demand ─(write on/off)─► unit space heating on/off
+```
+
+On every poll (15 s by default) Home Assistant:
+
+1. **Reads** the unit.
+2. **Updates the adaptive offset** from the room error. This only happens while heating is running.
+3. **Calculates the Flow target** from the curve, the adaptive offset and the room offset.
+4. **Runs the thermostat:** it pauses at *target + overshoot* and resumes at *target*, subject to the
+   minimum on/off times.
+5. **Switches space heating** on or off at the unit if the thermostat state changed.
+6. **Writes the Flow target** to the unit as the **Flow setpoint**, but only if heating is on, the change is
+   at least 0.5 °C, and the last write was at least 5 min ago. Changing the room target or a tuning
+   number writes straight away.
+
+### Flow target vs flow setpoint
+
+| | Flow target | Flow setpoint |
+|---|---|---|
+| What it is | What Home Assistant *wants* the flow temperature to be | What the heat pump is *actually using* (register 68, read back) |
+| Where it comes from | Calculated in Home Assistant on every poll | The unit's own memory |
+| Updates | Every poll | When Home Assistant writes to it, or someone changes it on the Samsung controller |
+| Category | Main sensor | Diagnostic |
+
+They normally agree to within 0.5 °C. They can differ when:
+
+* The new target is within 0.5 °C of the current setpoint. That isn't worth a write.
+* The last write was less than 5 min ago (*Minimum time between flow setpoint changes* option).
+* Heating is **paused or off**. Nothing is written, so the unit keeps its last value.
+* A write **failed**, for example because of a comms error. Check the logs.
+* Someone changed it at the **Samsung controller**. Home Assistant overwrites it on the next write.
+
+If the two stay apart for a long time while heating is running, the writes aren't reaching the unit.
+
+---
+
+## Climate: room thermostat
+
+`climate.samsung_ehs`
+
+Works like any room thermostat. The **target** is the room temperature you want, and the **current
+temperature** comes from the room sensor chosen in the options. If no room sensor is chosen, it uses
+the Samsung controller's own sensor.
+
+| Mode | Behaviour |
+|---|---|
+| **Heat** | Home Assistant runs space heating on weather compensation and pauses and resumes it as a thermostat. |
+| **Off** | Space heating is switched off at the unit straight away (this ignores the minimum on time). Hot water is not affected. |
+
+| HVAC action | Meaning |
+|---|---|
+| `heating` | Space heating on and compressor running |
+| `idle` | Heat mode, but paused (room ≥ target + overshoot, or above the heating cut-off), or on with the compressor not running |
+| `defrosting` | Outdoor unit is defrosting |
+| `off` | Mode is Off |
+
+Target range 5–28 °C in 0.5 °C steps. The mode and target are restored after a restart.
+
+| Attribute | Meaning |
+|---|---|
+| `heat_demand` | `true` while the thermostat is calling for heat. Same as the *Heat demand* binary sensor. |
+| `flow_target` | Current Flow target (°C), see above |
+| `flow_temperature` | Actual flow temperature leaving the heat pump (°C) |
+| `adaptive_offset` | Current learned curve offset (K), see *Adaptive curve offset* |
+
+---
+
+## Water heater: hot water
+
+`water_heater.samsung_ehs_hot_water`
+
+Controls the domestic hot water cylinder directly on the unit. Home Assistant doesn't add any logic of its
+own here.
+
+| Operation | Samsung mode |
+|---|---|
+| `off` | Hot water off |
+| `eco` | Eco: heat pump only, slowest, most efficient |
+| `standard` | Standard |
+| `performance` | Power: heat pump plus booster heater, faster |
+| `high_demand` | Force: one-off forced heat-up (EHS only) |
+
+Target range 30–70 °C. The current temperature is the cylinder sensor.
+
+---
+
+## Sensors
+
+### Temperatures and flow
+
+| Entity | Meaning |
+|---|---|
+| `sensor.samsung_ehs_flow_temperature` | Water leaving the heat pump (°C) |
+| `sensor.samsung_ehs_return_temperature` | Water coming back from the heating circuit (°C) |
+| `sensor.samsung_ehs_flow_return_difference` | Flow − return (K). Typically 3–7 K while heating. It goes negative during defrost. |
+| `sensor.samsung_ehs_hot_water_temperature` | Hot water cylinder (°C) |
+| `sensor.samsung_ehs_outdoor_temperature` | Heat pump's outdoor sensor (°C). Needs *extended registers*. |
+| `sensor.samsung_ehs_flow_rate` | Water flow rate (L/min). Needs *extended registers*. 0 when the pump is stopped. |
+| `sensor.samsung_ehs_compressor_frequency` | Compressor speed (Hz). Needs *extended registers*. 0 = stopped. |
+
+### Flow target
+
+`sensor.samsung_ehs_flow_target`: the flow temperature Home Assistant has calculated (°C). Its attributes
+show how it was worked out:
+
+| Attribute | Meaning |
+|---|---|
+| `effective_outdoor` | Outdoor temperature used by the curve: a blend of the current outdoor temperature and the forecast mean, weighted by *Forecast weight* (°C) |
+| `forecast_mean` | Mean forecast temperature over *Forecast look-ahead* hours (°C). `null` if no weather entity is configured or no forecast is available. |
+| `curve_flow` | Flow temperature from the heating curve alone at `effective_outdoor` (°C) |
+| `adaptive_offset` | Slow learned correction added to the curve (K) |
+| `room_offset` | Instant room correction = *Room influence gain* × (target − room), limited to ± *Room influence limit* (K) |
+| `heating_needed` | `false` when `effective_outdoor` is at or above the *Heating cut-off*. Heating then stays off. |
+| `heat_demand` | `true` while the thermostat is calling for heat |
+| `last_write` | When a flow setpoint was last written to the unit (UTC). `null` since startup if nothing has been written yet. |
+
+The state = `curve_flow` + `adaptive_offset` + `room_offset`, limited to the min/max flow temperature and
+rounded to 0.5 °C. Above the cut-off it equals the minimum flow temperature.
+
+### Adaptive curve offset
+
+`sensor.samsung_ehs_adaptive_curve_offset` (K): a slow, self-learning shift of the whole heating curve.
+
+While space heating runs (and isn't defrosting), it changes by
+*Adaptive learning rate* × (target − room) per hour. The default 0.5 means 1 °C too cold for an hour adds
+0.5 K. It is limited to ± *Adaptive offset limit*. It doesn't learn while heating is paused or off, or while the
+room sensor is unavailable. The value is saved and survives restarts.
+
+It's useful for tuning. If it settles at, say, +2 K, your curve is about 2 °C too low. Raise both curve
+flow points by 2 °C and the offset will drift back towards 0.
+
+### Heat output, COP and energy
+
+| Entity | Meaning |
+|---|---|
+| `sensor.samsung_ehs_heat_output` | Thermal power delivered (W) = flow rate × 4.18 × (flow − return). Negative during defrost. |
+| `sensor.samsung_ehs_cop` | Instant COP = heat output ÷ electrical power. Shown as unknown below 100 W input (standby) and limited to 10. |
+| `sensor.samsung_ehs_cop_today` | Heat energy today ÷ electrical energy today. Resets at local midnight. |
+| `sensor.samsung_ehs_cop_lifetime` | The same since the integration was installed |
+| `sensor.samsung_ehs_heat_energy` | Total heat delivered (kWh), including defrost losses. Can go into the Energy dashboard. |
+| `sensor.samsung_ehs_heat_energy_today` | Heat delivered today (kWh) |
+
+Electrical power comes from the *power sensor* option. Use a meter on the outdoor unit supply. In
+simulator mode with no power sensor, the simulator supplies its own figure. COP accuracy depends
+heavily on the flow rate reading. Treat it as a guide, not as metrology.
+
+---
+
+## Binary sensors
+
+| Entity | Meaning |
+|---|---|
+| `binary_sensor.samsung_ehs_heat_demand` | On while the thermostat is calling for heat and the climate mode is Heat. Off when paused or off. |
+| `binary_sensor.samsung_ehs_compressor` | On while the compressor is running (frequency > 0) |
+| `binary_sensor.samsung_ehs_defrost` | On while the outdoor unit is defrosting |
+| `binary_sensor.samsung_ehs_problem` | On if the module, indoor or outdoor unit reports an error. See the error code sensors. |
+
+---
+
+## Switches
+
+| Entity | Meaning |
+|---|---|
+| `switch.samsung_ehs_quiet_mode` | Samsung quiet (silent) mode. Lower fan and compressor speed, so less capacity. |
+| `switch.samsung_ehs_away_mode` | Samsung away (outing) mode, using the setback settings on the Samsung controller |
+
+---
+
+## Numbers: tuning
+
+All of these are under the device's **Configuration** section and are restored after a restart. Changing any
+of them recalculates and, if heating is on, writes the new flow temperature straight away.
+
+### Heating curve
+
+The curve is a straight line through two points, (design outdoor, design flow) and (mild outdoor, mild flow),
+and is held flat beyond the min/max flow temperature.
+
+| Entity | Default | Meaning |
+|---|---|---|
+| `number.samsung_ehs_curve_design_outdoor_temperature` | −3 °C | Coldest outdoor temperature you design for |
+| `number.samsung_ehs_curve_flow_at_design_temperature` | 45 °C | Flow temperature needed at that outdoor temperature |
+| `number.samsung_ehs_curve_mild_outdoor_temperature` | 15 °C | A mild outdoor temperature |
+| `number.samsung_ehs_curve_flow_at_mild_temperature` | 25 °C | Flow temperature needed at that outdoor temperature |
+| `number.samsung_ehs_minimum_flow_temperature` | 20 °C | Lowest flow ever written. The unit's own limit is 15 °C. |
+| `number.samsung_ehs_maximum_flow_temperature` | 55 °C | Highest flow ever written. The unit's own limit is 55 °C. |
+| `number.samsung_ehs_heating_cut_off_outdoor_temperature` | 17 °C | At or above this *effective* outdoor temperature, heating stays off |
+
+### Forecast
+
+| Entity | Default | Meaning |
+|---|---|---|
+| `number.samsung_ehs_forecast_look_ahead` | 6 h | How far ahead to average the hourly forecast |
+| `number.samsung_ehs_forecast_weight` | 0.3 | 0 = ignore the forecast, 1 = use only the forecast. 0.3 = 70 % now + 30 % forecast. |
+
+### Room influence (instant)
+
+| Entity | Default | Meaning |
+|---|---|---|
+| `number.samsung_ehs_room_influence_gain` | 3 | K of flow added per K the room is below target (and removed when above) |
+| `number.samsung_ehs_room_influence_limit` | 5 K | Maximum room correction either way |
+
+### Adaptive offset (slow)
+
+| Entity | Default | Meaning |
+|---|---|---|
+| `number.samsung_ehs_adaptive_learning_rate` | 0.5 | K per hour per K of room error. 0 turns learning off and holds the current offset. |
+| `number.samsung_ehs_adaptive_offset_limit` | 5 K | Maximum learned offset either way |
+
+### Thermostat
+
+| Entity | Default | Meaning |
+|---|---|---|
+| `number.samsung_ehs_thermostat_overshoot` | 1.0 K | Pause heating when the room reaches target + this. Resume at target. |
+| `number.samsung_ehs_minimum_on_time` | 20 min | Heating can't be paused until it has run this long. 20 min means at most 3 starts per hour. |
+| `number.samsung_ehs_minimum_off_time` | 0 min | Heating can't restart until it has been paused this long |
+
+Turning the climate entity Off, or back to Heat, ignores both minimum times.
+
+---
+
+## Diagnostic entities
+
+Found under the device's **Diagnostic** section.
+
+| Entity | Meaning |
+|---|---|
+| `sensor.samsung_ehs_flow_setpoint` | Flow temperature setpoint the unit is actually using (register 68). See [Flow target vs flow setpoint](#flow-target-vs-flow-setpoint). |
+| `sensor.samsung_ehs_outdoor_unit_error_code` | 0 = OK, otherwise the Samsung error code (e.g. 201) |
+| `sensor.samsung_ehs_indoor_unit_error_code` | 0 = OK, otherwise the Samsung error code |
+| `sensor.samsung_ehs_controller_room_temperature` | Room temperature from the Samsung wired controller (disabled by default). Used only if no room sensor is configured. |
+
+A **diagnostics download** (device page → ⋮ → *Download diagnostics*) contains the raw decoded
+registers, all tuning values, the latest calculation and the energy counters. Attach it to bug reports.

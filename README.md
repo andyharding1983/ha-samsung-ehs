@@ -15,10 +15,13 @@ No cloud, no SmartThings.
 |---|---|
 | Climate | Room thermostat: Heat/Off and room target temperature |
 | Water heater | Hot water on/off, Eco / Standard / Power / Force, tank target |
-| Sensor | Flow, return, ΔT, flow setpoint, hot water tank, outdoor temp, flow rate, compressor frequency, heat output, COP (instant / today / lifetime), heat energy, flow target, adaptive curve offset, error codes |
+| Sensor | Flow, return, ΔT, hot water tank, outdoor temp, flow rate, compressor frequency, heat output, COP (instant / today / lifetime), heat energy, flow target, adaptive curve offset, error codes |
 | Binary sensor | Heat demand, defrost, compressor running, problem |
 | Switch | Quiet mode, away mode |
 | Number | Heating curve, thermostat and adaptive tuning |
+
+📖 **[Full entity reference](docs/entities.md)**: every entity, attribute and setting explained, including
+[flow target vs flow setpoint](docs/entities.md#flow-target-vs-flow-setpoint).
 
 ## Hardware
 
@@ -95,7 +98,9 @@ flow_setpoint     = clamp(curve_flow + adaptive_offset + room_offset, min flow, 
 * Hot water is controlled separately and keeps working while space heating is paused.
 
 The `Flow target` sensor shows the working: curve flow, adaptive offset, room offset,
-effective outdoor temperature, forecast mean, heat demand and last write.
+effective outdoor temperature, forecast mean, heat demand and last write. The `Flow setpoint`
+diagnostic sensor is the value the unit is actually using. See
+[flow target vs flow setpoint](docs/entities.md#flow-target-vs-flow-setpoint).
 
 ### Tuning tips
 
