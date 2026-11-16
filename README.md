@@ -15,6 +15,12 @@ No cloud, no SmartThings.
 > is the approach recommended by the author, a registered Samsung installer, because it
 > does not risk the warranty. Have the MIM-B19N fitted to Samsung's instructions.
 
+> **Status: early release, not yet tested on hardware.** So far it has been developed and
+> tested against the built-in simulator only. The core MIM-B19N registers follow Samsung's
+> manual. The extended registers (outdoor temperature, compressor frequency, flow rate and
+> 3-way valve) still need confirming on a live unit. Please report results, good or bad,
+> under [Issues](https://github.com/andyharding1983/ha-samsung-ehs/issues).
+
 ## Features
 
 | Platform | Entities |
@@ -219,6 +225,11 @@ logger:
     custom_components.samsung_ehs: debug
     pymodbus: info
 ```
+
+## Author
+
+Written by Andy Harding, a registered Samsung installer:
+[www.hardingharding.co.uk](https://www.hardingharding.co.uk).
 
 ## Disclaimer
 
