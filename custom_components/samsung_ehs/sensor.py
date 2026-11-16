@@ -55,6 +55,7 @@ def _wc_attrs(c: EhsCoordinator) -> dict[str, Any] | None:
         "adaptive_offset": r.curve_offset,
         "room_offset": r.room_offset,
         "wind_offset": r.wind_offset,
+        "forecast_offset": r.forecast_offset,
         "wind_speed": r.wind_speed,
         "effective_outdoor": r.effective_outdoor,
         "forecast_mean": r.forecast_mean,

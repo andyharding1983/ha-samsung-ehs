@@ -59,6 +59,7 @@ class WcResult:
     design_weight: float = 0.5  # share of the cold curve end at effective_outdoor
     wind_offset: float = 0.0  # K added for wind
     wind_speed: float | None = None  # m/s used for wind_offset
+    forecast_offset: float = 0.0  # K the forecast moved the curve flow
 
 
 WIND_MAX_OFFSET = 3.0  # K
@@ -174,6 +175,7 @@ def compute(
             wind_speed=wind,
         )
     base = curve_flow(p, eff)
+    fc_off = round(base - curve_flow(p, outdoor_now), 2)
     off = room_offset(p, room_temp)
     w_off = wind_offset(p, wind)
     raw = base + curve_offset + off + w_off
@@ -191,4 +193,5 @@ def compute(
         design_weight=w_d,
         wind_offset=w_off,
         wind_speed=wind,
+        forecast_offset=fc_off,
     )

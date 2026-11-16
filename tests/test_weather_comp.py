@@ -91,3 +91,12 @@ def test_wind_boost():
     windy = W.compute(p, 5.0, wind=10.0)
     assert windy.wind_offset == 1.5 and windy.wind_speed == 10.0
     assert windy.flow_target - calm.flow_target == pytest.approx(1.5, abs=0.5)
+
+
+def test_forecast_offset():
+    p = W.WcParams(forecast_weight=0.5)
+    r = W.compute(p, 5.0, forecast=[1.0, 1.0])
+    assert r.effective_outdoor == 3.0
+    assert r.forecast_offset == round(W.curve_flow(p, 3.0) - W.curve_flow(p, 5.0), 2)
+    assert r.forecast_offset > 0
+    assert W.compute(p, 5.0).forecast_offset == 0.0
