@@ -110,6 +110,12 @@ class SimulatedClient:
             data.extended["sim_power"] = round(self.power_w, 1)
         return data
 
+    async def dump(self, start: int = 0, end: int = 130, chunk: int = 10) -> dict:
+        return {
+            "registers": {a: self._regs.get(a, 0) for a in range(start, end + 1)},
+            "errors": {},
+        }
+
     # --- physics ------------------------------------------------------------
     def step(self) -> None:
         now = self._clock()

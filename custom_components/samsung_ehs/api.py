@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+from typing import Any
 
 from pymodbus.client import AsyncModbusSerialClient
 from pymodbus.exceptions import ModbusException
@@ -70,6 +71,30 @@ class EhsClient:
             raise EhsConnectionError(f"read {address}+{count} failed: {rr}")
         await asyncio.sleep(INTER_REQUEST_DELAY)
         return list(rr.registers)
+
+    async def dump(self, start: int = 0, end: int = 130, chunk: int = 10) -> dict[str, Any]:
+        """Read a raw register range for diagnostics.
+
+        Reads in chunks; if a chunk is refused (e.g. it spans an unmapped
+        address) its registers are retried one by one so the rest still show.
+        """
+        regs: dict[int, int] = {}
+        errors: dict[int, str] = {}
+        async with self._lock:
+            for addr in range(start, end + 1, chunk):
+                count = min(chunk, end + 1 - addr)
+                try:
+                    for i, val in enumerate(await self._read(addr, count)):
+                        regs[addr + i] = val
+                    continue
+                except EhsConnectionError:
+                    pass
+                for a in range(addr, addr + count):
+                    try:
+                        regs[a] = (await self._read(a, 1))[0]
+                    except EhsConnectionError as err:
+                        errors[a] = str(err)
+        return {"registers": regs, "errors": errors}
 
     async def write(self, address: int, value: int) -> None:
         """Write one holding register."""

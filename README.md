@@ -228,8 +228,10 @@ so outdoor temperature is at 5 and compressor frequency at 6.
 > **Still to confirm on a live unit:** where the *indoor* values (flow rate, 3-way valve)
 > appear. The integration currently reads them straight after the outdoor ones, at 7 and 8.
 > ZimKev's tested configuration instead reads indoor values from **82** onwards (indoor
-> base 50 + 32). If the flow rate or valve sensors look wrong, please open an issue with a
-> debug log.
+> base 50 + 32). If the flow rate or valve sensors look wrong, please open an issue and
+> attach the **diagnostics download** (Settings → Devices & services → Samsung EHS → ⋮ →
+> Download diagnostics). It includes a raw dump of registers 0–130, read just after the
+> enable writes.
 
 ## Debug logging
 

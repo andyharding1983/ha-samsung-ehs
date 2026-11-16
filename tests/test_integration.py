@@ -36,6 +36,7 @@ def client():
     c.read_all = AsyncMock(return_value=_snapshot())
     c.write_indoor = AsyncMock()
     c.write = AsyncMock()
+    c.dump = AsyncMock(return_value={"registers": {5: 50, 6: 0xFFEC}, "errors": {}})
     c.close = MagicMock()
     with patch("custom_components.samsung_ehs.EhsClient", return_value=c), patch(
         "custom_components.samsung_ehs.config_flow.EhsClient", return_value=c
@@ -219,6 +220,9 @@ async def test_diagnostics(hass: HomeAssistant, client) -> None:
     diag = await async_get_config_entry_diagnostics(hass, entry)
     assert diag["data"]["water_out"] == 35.0
     assert diag["weather_compensation"]["outdoor_used"] == 5.0
+    ext = diag["extended_registers"]
+    assert ext["requested"]["6000"] == ["0x8204", "0x8238"]
+    assert ext["raw_dump"]["registers"]["6"] == {"raw": 0xFFEC, "x0.1": -2.0}
 
 
 async def test_emitter_select_applies_preset(hass: HomeAssistant, client) -> None:
@@ -444,3 +448,23 @@ async def test_dhw_boost_cancel_restores_previous(hass: HomeAssistant, client) -
         {"entity_id": "button.samsung_ehs_cancel_hot_water_boost"}, blocking=True,
     )
     client.write_indoor.assert_any_await(R.IU_DHW_POWER, 0)  # was off before
+
+
+async def test_register_dump_falls_back_to_single_reads() -> None:
+    from custom_components.samsung_ehs.api import EhsClient, EhsConnectionError
+
+    c = EhsClient.__new__(EhsClient)
+    import asyncio
+
+    c._lock = asyncio.Lock()
+
+    async def fake_read(addr, count):
+        if addr <= 3 < addr + count:  # address 3 is unmapped
+            raise EhsConnectionError("illegal address")
+        return [addr + i for i in range(count)]
+
+    c._read = fake_read
+    out = await c.dump(0, 12, chunk=5)
+    assert out["errors"].keys() == {3}
+    assert out["registers"][4] == 4 and out["registers"][12] == 12
+    assert 3 not in out["registers"]
