@@ -32,10 +32,15 @@ No cloud, no SmartThings.
 * Serial settings are fixed by the module: **9600 baud, 8 data bits, even parity, 1 stop bit**.
 * The Modbus address is set with the DIP switches (SW4/SW5) plus the rotary switch (SW1).
   Power-cycle the module after changing it.
+* **Cable:** screened twisted pair. Screened Cat5e works well, e.g. Ubiquiti UISP Cable Pro.
+  Use one twisted pair for A/B.
+* **Termination:** fit a **120 Ω resistor across A/B at the heat pump (MIM-B19N) end** of the
+  Modbus cable.
 
-> **One Modbus master only.** If something else is already polling the MIM-B19N
-> (a third-party controller, Home Assistant's built-in `modbus:` YAML, etc.), disconnect it
-> first. Two masters on one RS485 bus will corrupt each other's traffic.
+> **One Modbus master only.** Home Assistant must be the only master on the bus. If a Samsung
+> **MIM-H04EN** Wi-Fi controller is fitted, disconnect it. Also disconnect anything else
+> polling the MIM-B19N (a third-party controller, Home Assistant's built-in `modbus:` YAML,
+> etc.). Two masters on one RS485 bus corrupt each other's traffic.
 
 ## Installation
 
