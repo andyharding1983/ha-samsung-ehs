@@ -67,12 +67,6 @@ views:
     - type: heading
       heading: Weather compensation
       icon: mdi:weather-partly-cloudy
-    - type: tile
-      entity: sensor.samsung_ehs_outdoor_temperature
-      name: Outdoor
-    - type: tile
-      entity: sensor.samsung_ehs_flow_target
-      name: Flow target
     - type: markdown
       grid_options:
         columns: 12
