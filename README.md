@@ -9,6 +9,12 @@ Samsung's **MIM-B19N** Modbus interface module, with Home Assistant-side
 
 No cloud, no SmartThings.
 
+> **Uses Samsung's official interface only.** All communication goes through the Samsung
+> MIM-B19N module's documented Modbus interface. Nothing is connected directly to the
+> F1/F2 communication bus, and the heat pump's wiring and firmware are not modified. This
+> is the approach recommended by the author, a registered Samsung installer, because it
+> does not risk the warranty. Have the MIM-B19N fitted to Samsung's instructions.
+
 ## Features
 
 | Platform | Entities |
