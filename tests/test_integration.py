@@ -40,6 +40,8 @@ def client():
     c.close = MagicMock()
     with patch("custom_components.samsung_ehs.EhsClient", return_value=c), patch(
         "custom_components.samsung_ehs.config_flow.EhsClient", return_value=c
+    ), patch(  # keep tests independent of any real USB adapter on this machine
+        "custom_components.samsung_ehs.config_flow.BY_ID_DIR", "/nonexistent"
     ):
         yield c
 
@@ -484,3 +486,19 @@ async def test_reconfigure_changes_port(hass: HomeAssistant, client) -> None:
     assert result["reason"] == "reconfigure_successful"
     assert entry.data["port"] == "/dev/serial/by-id/usb-test"
     assert entry.options["hot_water"] is False
+
+
+def test_stable_port(tmp_path, monkeypatch) -> None:
+    from custom_components.samsung_ehs import config_flow as cf
+
+    dev = tmp_path / "ttyUSB0"
+    dev.touch()
+    by_id = tmp_path / "by-id"
+    by_id.mkdir()
+    link = by_id / "usb-FTDI_FT232R_USB_UART_X-if00-port0"
+    link.symlink_to(dev)
+    monkeypatch.setattr(cf, "BY_ID_DIR", str(by_id))
+    assert cf.stable_port(str(dev)) == str(link)
+    assert cf.stable_port(str(link)) == str(link)
+    assert cf.stable_port("simulator") == "simulator"
+    assert cf.stable_port(str(tmp_path / "ttyUSB9")) == str(tmp_path / "ttyUSB9")

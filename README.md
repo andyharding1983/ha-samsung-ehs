@@ -76,8 +76,10 @@ Then open **Configure** on the integration to set:
 ### Switching from the simulator to the real unit
 
 Settings → Devices & services → Samsung EHS → ⋮ → **Reconfigure**. Enter the real serial port,
-preferably the `/dev/serial/by-id/…` path. The integration checks it can reach the MIM-B19N
-before saving. Your options and the learned curve are kept.
+preferably the `/dev/serial/by-id/…` path. If you enter a `/dev/ttyUSB0` style path, it's
+converted to the by-id link automatically. That name comes from the adapter's USB serial
+number, so it doesn't change after reboots, updates or re-plugging. The integration checks it
+can reach the MIM-B19N before saving. Your options and the learned curve are kept.
 
 ## Dashboard
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 import voluptuous as vol
@@ -67,6 +68,24 @@ RECONFIGURE_SCHEMA = vol.Schema(
 )
 
 
+BY_ID_DIR = "/dev/serial/by-id"
+
+
+def stable_port(port: str) -> str:
+    """Swap /dev/ttyUSBx style paths for their /dev/serial/by-id link.
+
+    The by-id name comes from the adapter's USB serial number, so it survives
+    reboots, updates and re-plugging, unlike ttyUSB numbering.
+    """
+    if port == SIM_PORT or port.startswith(BY_ID_DIR) or not os.path.isdir(BY_ID_DIR):
+        return port
+    real = os.path.realpath(port)
+    for entry in os.scandir(BY_ID_DIR):
+        if entry.is_symlink() and os.path.realpath(entry.path) == real:
+            return entry.path
+    return port
+
+
 async def _validate(data: dict[str, Any]) -> None:
     if data[CONF_PORT] == SIM_PORT:
         return
@@ -89,6 +108,9 @@ class EhsConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
+            user_input[CONF_PORT] = await self.hass.async_add_executor_job(
+                stable_port, user_input[CONF_PORT].strip()
+            )
             await self.async_set_unique_id(
                 f"{user_input[CONF_PORT]}_{user_input[CONF_SLAVE]}_"
                 f"{user_input[CONF_INDOOR_INDEX]}"
@@ -120,6 +142,9 @@ class EhsConfigFlow(ConfigFlow, domain=DOMAIN):
         entry = self._get_reconfigure_entry()
         errors: dict[str, str] = {}
         if user_input is not None:
+            user_input[CONF_PORT] = await self.hass.async_add_executor_job(
+                stable_port, user_input[CONF_PORT].strip()
+            )
             try:
                 await _validate(user_input)
             except EhsConnectionError:

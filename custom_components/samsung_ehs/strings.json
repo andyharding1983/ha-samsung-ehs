@@ -12,7 +12,7 @@
           "hot_water": "Hot water cylinder"
         },
         "data_description": {
-          "port": "For example /dev/ttyUSB0 or /dev/serial/by-id/…, or 'simulator' to try it without hardware.",
+          "port": "For example /dev/serial/by-id/… (a /dev/ttyUSB0 style path is converted to its by-id link automatically, so it survives reboots), or 'simulator' to try it without hardware.",
           "slave": "Set by the DIP and rotary switches on the MIM-B19N (1–247).",
           "indoor_index": "0 for a single EHS unit.",
           "hot_water": "Turn off for heating-only systems. The hot water controls and sensors are then hidden."
@@ -28,7 +28,7 @@
           "indoor_index": "Indoor unit index"
         },
         "data_description": {
-          "port": "For example /dev/ttyUSB0 or /dev/serial/by-id/…, or 'simulator' to try it without hardware.",
+          "port": "For example /dev/serial/by-id/… (a /dev/ttyUSB0 style path is converted to its by-id link automatically, so it survives reboots), or 'simulator' to try it without hardware.",
           "slave": "Set by the DIP and rotary switches on the MIM-B19N (1–247).",
           "indoor_index": "0 for a single EHS unit."
         }
