@@ -233,5 +233,6 @@ Written by Andy Harding, a registered Samsung installer:
 
 ## Disclaimer
 
-Not affiliated with or endorsed by Samsung. You use this at your own risk. The integration writes
+Not affiliated with or endorsed by Samsung. Samsung and the Samsung logo are trademarks of Samsung
+Electronics Co., Ltd. They are used here only to identify compatible equipment. You use this at your own risk. The integration writes
 setpoints to your heat pump, so keep an eye on it after installation.
