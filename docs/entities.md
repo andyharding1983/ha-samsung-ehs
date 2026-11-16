@@ -47,7 +47,7 @@ On every poll (15 s by default) Home Assistant:
 
 | | Flow target | Flow setpoint |
 |---|---|---|
-| What it is | What Home Assistant *wants* the flow temperature to be | What the heat pump is *actually using* (register 68, read back) |
+| What it is | What Home Assistant *wants* the flow temperature to be (the maximum flow temperature during a boost) | What the heat pump is *actually using* (register 68, read back) |
 | Where it comes from | Calculated in Home Assistant on every poll | The unit's own memory |
 | Updates | Every poll | When Home Assistant writes to it, or someone changes it on the Samsung controller |
 | Category | Main sensor | Diagnostic |
@@ -188,6 +188,7 @@ show how it was worked out:
 | `adaptive_offset` | Learned correction applied at `effective_outdoor` (K), see *Learned curve offset* |
 | `room_offset` | Instant room correction = *Room influence gain* × (target − room), limited to ± *Room influence limit* (K) |
 | `wind_speed` | Wind used for the wind boost (m/s): the mean of the weather entity's current wind and the hourly forecast over *Forecast look-ahead*. `null` without a weather entity. |
+| `boost_offset` | Extra flow added by a heating boost, up to the maximum flow temperature (K). `0` when no boost is running. |
 | `wind_offset` | Wind boost = *Wind boost gain* × (`wind_speed` − *Wind boost threshold*), from 0 to 3 K |
 | `limited` | `1` when the result is held at the maximum flow temperature, `-1` at the minimum, `0` otherwise. While it is held, curve learning doesn't wind up further in that direction. |
 | `heating_needed` | `false` when `effective_outdoor` is at or above the *Heating cut-off*. Heating then stays off. |

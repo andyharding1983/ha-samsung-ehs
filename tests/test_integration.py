@@ -351,6 +351,9 @@ async def test_boost(hass: HomeAssistant, client) -> None:
     climate = hass.states.get("climate.samsung_ehs")
     assert climate.attributes["preset_mode"] == "boost"
     assert climate.attributes["boost_until"] is not None
+    wc = hass.states.get("sensor.samsung_ehs_flow_target")
+    assert float(wc.state) == 45.0
+    assert wc.attributes["boost_offset"] > 0
 
     # An hour later it ends and heating goes back off
     c = hass.config_entries.async_entries(DOMAIN)[0].runtime_data

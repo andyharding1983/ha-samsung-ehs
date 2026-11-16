@@ -111,6 +111,12 @@ views:
         name: Wind
         icon: mdi:weather-windy
         suffix: ' K'
+      - type: attribute
+        entity: sensor.samsung_ehs_flow_target
+        attribute: boost_offset
+        name: Boost
+        icon: mdi:rocket-launch
+        suffix: ' K'
       - type: divider
       - entity: sensor.samsung_ehs_flow_target
         name: Flow target

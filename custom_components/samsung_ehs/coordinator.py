@@ -485,6 +485,17 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
     def boost_active(self) -> bool:
         return self.boost_until is not None and dt_util.utcnow() < self.boost_until
 
+    @property
+    def boost_flow(self) -> float:
+        return round_half(min(self.wc_params["wc_flow_max"], R.FLOW_SET_MAX))
+
+    @property
+    def commanded_flow(self) -> float | None:
+        """Flow setpoint being sent: maximum during boost, else the WC target."""
+        if self.boost_active:
+            return self.boost_flow
+        return self.wc_result.flow_target if self.wc_result else None
+
     async def async_start_boost(self) -> None:
         """Run at maximum flow for an hour; pressing again restarts the hour."""
         self.boost_until = dt_util.utcnow() + timedelta(seconds=BOOST_DURATION_S)
@@ -582,8 +593,7 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
             await self._async_set_power(want_on, data)
 
         if boosting:
-            flow = round_half(min(self.wc_params["wc_flow_max"], R.FLOW_SET_MAX))
-            await self._async_write_flow(flow, data, now, force_flow)
+            await self._async_write_flow(self.boost_flow, data, now, force_flow)
         elif want_on and result is not None:
             await self._async_write_flow(result.flow_target, data, now, force_flow)
 

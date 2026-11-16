@@ -56,6 +56,7 @@ def _wc_attrs(c: EhsCoordinator) -> dict[str, Any] | None:
         "adaptive_offset": r.curve_offset,
         "room_offset": r.room_offset,
         "wind_offset": r.wind_offset,
+        "boost_offset": round(c.boost_flow - r.flow_target, 2) if c.boost_active else 0.0,
         "forecast_offset": r.forecast_offset,
         "wind_speed": r.wind_speed,
         "effective_outdoor": r.effective_outdoor,
@@ -204,7 +205,7 @@ SENSORS: tuple[EhsSensorDescription, ...] = (
     EhsSensorDescription(
         key="wc_target",
         **TEMP,
-        value_fn=lambda c: c.wc_result.flow_target if c.wc_result else None,
+        value_fn=lambda c: c.commanded_flow,
         attrs_fn=_wc_attrs,
     ),
     EhsSensorDescription(
