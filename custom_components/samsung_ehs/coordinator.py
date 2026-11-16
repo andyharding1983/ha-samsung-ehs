@@ -44,12 +44,13 @@ from .const import (
     WC_ADAPT_RATE,
     WC_DEFAULTS,
     WC_HYSTERESIS,
+    WC_RESTART_DROP,
     WC_MIN_OFF,
     WC_MIN_ON,
     WC_ROOM_TARGET,
     WC_WRITE_DEADBAND,
 )
-from .control import AdaptiveCurve, Thermostat
+from .control import AdaptiveCurve, StartCounter, Thermostat
 from .cop import EnergyTracker, heat_output_w, instant_cop
 from .weather_comp import WcParams, WcResult, compute, round_half
 
@@ -165,6 +166,7 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         self.power_w: float | None = None
         self.cop: float | None = None
         self.energy = EnergyTracker()
+        self.starts = StartCounter()
         self._store: Store = Store(hass, STORAGE_VERSION, f"{DOMAIN}.{entry.entry_id}")
         self._last_save: datetime | None = None
         self._unsub_listener = None
@@ -183,6 +185,7 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
             self.adaptive.design = self.adaptive.mild = float(
                 stored.get("adaptive_offset", 0.0)
             )
+        self.starts = StartCounter.from_dict(stored.get("starts"))
         # Run the control loop after every successful poll.
         self._unsub_listener = self.async_add_listener(self._schedule_control)
 
@@ -190,6 +193,7 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         return {
             "energy": self.energy.as_dict(),
             "adaptive": {"design": self.adaptive.design, "mild": self.adaptive.mild},
+            "starts": self.starts.as_dict(),
         }
 
     def _schedule_control(self) -> None:
@@ -311,6 +315,8 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         self.cop = instant_cop(self.heat_w, self.power_w)
         now = dt_util.now()
         self.energy.update(now, self.heat_w, self.power_w)
+        freq = (data.extended or {}).get("compressor_freq")
+        self.starts.update(now, None if freq is None else freq > 0)
         if self._last_save is None or now - self._last_save >= SAVE_EVERY:
             self._last_save = now
             self._store.async_delay_save(self._store_data, 10)
@@ -435,6 +441,7 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
     def _apply_thermostat_params(self) -> None:
         p = self.wc_params
         self.thermostat.hysteresis = p[WC_HYSTERESIS]
+        self.thermostat.restart_drop = p[WC_RESTART_DROP]
         self.thermostat.min_on_s = p[WC_MIN_ON] * 60
         self.thermostat.min_off_s = p[WC_MIN_OFF] * 60
         self.adaptive.rate = p[WC_ADAPT_RATE]

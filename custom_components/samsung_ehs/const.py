@@ -46,6 +46,7 @@ WC_FLOW_MIN = "wc_flow_min"
 WC_FLOW_MAX = "wc_flow_max"
 WC_HEATING_CUTOFF = "wc_heating_cutoff"  # effective outdoor temp above which heating stops
 WC_HYSTERESIS = "wc_hysteresis"  # K above target at which heating pauses
+WC_RESTART_DROP = "wc_restart_drop"  # K below that pause point where it restarts
 WC_MIN_ON = "wc_min_on"  # minutes; 20 => max 3 starts per hour
 WC_MIN_OFF = "wc_min_off"  # minutes
 WC_ADAPT_RATE = "wc_adapt_rate"  # K curve offset per hour per K room error
@@ -91,6 +92,7 @@ WC_DEFAULTS: dict[str, float] = {
     WC_FLOW_MAX: 45.0,
     WC_HEATING_CUTOFF: 17.0,
     WC_HYSTERESIS: 1.0,
+    WC_RESTART_DROP: 0.5,
     WC_MIN_ON: 20.0,
     WC_MIN_OFF: 0.0,
     WC_ADAPT_RATE: 0.25,

@@ -13,10 +13,33 @@ def test_pauses_at_target_plus_hysteresis_after_min_on():
     assert t.update(21 * MIN, 22.0, 21.0) is False  # paused
 
 
-def test_resumes_at_target():
-    t = C.Thermostat(min_on_s=0, calling=False, last_change=0)
+def test_resumes_at_target_with_full_drop():
+    t = C.Thermostat(min_on_s=0, calling=False, last_change=0, restart_drop=1.0)
     assert t.update(MIN, 21.5, 21.0) is False  # between target and target+1
     assert t.update(2 * MIN, 21.0, 21.0) is True
+
+
+def test_default_restarts_half_way_back():
+    t = C.Thermostat(min_on_s=0, calling=False, last_change=0)  # drop 0.5
+    assert t.update(MIN, 21.6, 21.0) is False
+    assert t.update(2 * MIN, 21.5, 21.0) is True  # target + 1 - 0.5
+
+
+def test_start_counter():
+    from datetime import datetime, timedelta
+
+    sc = C.StartCounter()
+    t0 = datetime(2026, 11, 16, 12, 0)
+    sc.update(t0, True)  # first reading only sets the baseline
+    assert sc.today == 0
+    sc.update(t0 + timedelta(minutes=1), False)
+    sc.update(t0 + timedelta(minutes=2), None)  # unknown: no change
+    sc.update(t0 + timedelta(minutes=3), True)
+    assert (sc.today, sc.total) == (1, 1)
+    sc.update(t0 + timedelta(days=1), True)  # new day resets today only
+    assert (sc.today, sc.total) == (0, 1)
+    again = C.StartCounter.from_dict(sc.as_dict())
+    assert (again.today, again.total, again.day) == (0, 1, sc.day)
 
 
 def test_min_on_20_caps_three_starts_per_hour():

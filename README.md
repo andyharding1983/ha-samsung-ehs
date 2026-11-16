@@ -147,10 +147,19 @@ flow_setpoint     = clamp(curve_flow + adaptive_offset + room_offset + wind_offs
 ### Thermostat on/off
 
 * When the room reaches **target + overshoot** (default 1 °C), space heating is switched off at the unit.
-* When the room falls back to **target**, it is switched on again.
+* It switches back on once the room has fallen **restart drop** (default 0.5 °C) below that
+  point, so at target + 0.5 °C by default. The room is still above target at that moment, so
+  room influence keeps the flow temperature low and the compressor restarts gently. Without
+  this, it would wait until the room had already gone cold. That matters most for underfloor
+  heating after a sunny afternoon: the floor slab takes hours to warm up again. Set the drop
+  equal to the overshoot to restart at target instead.
 * Above the **heating cut-off** effective outdoor temperature, heating stays off.
 * **Minimum on time** (default 20 min) protects the compressor. With no minimum off time, that
   limits the unit to **3 starts per hour**. An optional minimum off time is also available.
+  After a Home Assistant restart, the minimum on time starts again from that moment, so a
+  restart can never cause a short cycle.
+* **Compressor starts today** counts compressor starts, so you can see the effect of these
+  settings.
 * If the room sensor becomes unavailable, heating is never paused. It runs on weather
   compensation alone until the sensor comes back.
 * Hot water is controlled separately and keeps working while space heating is paused.
@@ -181,6 +190,12 @@ temperature. See [docs/entities.md](docs/entities.md#viewing-the-learned-curve).
 2. Lower the flow temperatures until the house *just* holds temperature. Lower flow means higher COP,
    and long steady runs beat on/off cycling.
 3. Once the learned offsets have settled over a few weeks of varied weather, press **Apply learned curve**.
+4. **Room influence:** the defaults (gain 3 K/K, limit 5 K) are cautious. A slow underfloor
+   system with large solar gains may need much more. The first live install runs **gain 5 K/K
+   and limit 10 K**, so that the flow drops well before the room overshoots. Ideally the
+   compressor slows to its minimum and never needs the hard off at all.
+5. Watch **Compressor starts today**. A few long runs a day is good. Dozens of starts means the
+   overshoot or restart drop is too small, or the minimum output is more than the house needs.
 
 ## COP
 

@@ -3,7 +3,10 @@
 Pure logic, no Home Assistant imports.
 
 Thermostat: heating is called for until the room reaches target + hysteresis,
-then paused until the room falls back to target. The compressor is protected
+then paused until the room falls `restart_drop` below that point (the default
+of 0.5 K with a 1 K hysteresis restarts at target + 0.5, while the room
+influence still holds the flow low, so the compressor restarts gently instead
+of chasing a room that has already gone cold). The compressor is protected
 by a minimum on time (and optional minimum off time); with a 20 min minimum
 on time the unit can start at most 3 times per hour.
 
@@ -14,7 +17,8 @@ target across the whole range of outdoor temperatures.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import date, datetime
 
 
 @dataclass
@@ -22,6 +26,7 @@ class Thermostat:
     """Hysteresis room thermostat with minimum on/off times."""
 
     hysteresis: float = 1.0
+    restart_drop: float = 0.5
     min_on_s: float = 20 * 60
     min_off_s: float = 0.0
     calling: bool = True
@@ -40,7 +45,7 @@ class Thermostat:
                 self.calling = False
                 self.last_change = now
         else:
-            cold = room is None or room <= target
+            cold = room is None or room <= target + self.hysteresis - self.restart_drop
             if cold and heating_needed and elapsed >= self.min_off_s:
                 self.calling = True
                 self.last_change = now
@@ -103,3 +108,48 @@ class AdaptiveCurve:
     def reset(self) -> None:
         self.design = 0.0
         self.mild = 0.0
+
+
+@dataclass
+class StartCounter:
+    """Counts compressor starts (frequency going from 0 to above 0).
+
+    The first reading after start-up only sets the baseline, so a restart of
+    Home Assistant is never counted as a compressor start.
+    """
+
+    today: int = 0
+    total: int = 0
+    day: date | None = None
+    last_start: datetime | None = None
+    _running: bool | None = field(default=None, repr=False)
+
+    def update(self, now: datetime, running: bool | None) -> None:
+        if self.day != now.date():
+            self.day = now.date()
+            self.today = 0
+        if running is None:
+            return
+        if running and self._running is False:
+            self.today += 1
+            self.total += 1
+            self.last_start = now
+        self._running = running
+
+    def as_dict(self) -> dict:
+        return {
+            "today": self.today,
+            "total": self.total,
+            "day": self.day.isoformat() if self.day else None,
+            "last_start": self.last_start.isoformat() if self.last_start else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict | None) -> StartCounter:
+        data = data or {}
+        out = cls(today=int(data.get("today", 0)), total=int(data.get("total", 0)))
+        if data.get("day"):
+            out.day = date.fromisoformat(data["day"])
+        if data.get("last_start"):
+            out.last_start = datetime.fromisoformat(data["last_start"])
+        return out

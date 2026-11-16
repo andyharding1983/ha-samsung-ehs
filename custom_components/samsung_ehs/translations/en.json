@@ -139,6 +139,9 @@
       },
       "electrical_energy_today": {
         "name": "Electrical energy today"
+      },
+      "compressor_starts_today": {
+        "name": "Compressor starts today"
       }
     },
     "binary_sensor": {
@@ -214,6 +217,9 @@
       },
       "wc_wind_threshold": {
         "name": "Wind boost threshold"
+      },
+      "wc_restart_drop": {
+        "name": "Thermostat restart drop"
       }
     },
     "water_heater": {

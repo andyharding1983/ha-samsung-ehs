@@ -203,6 +203,16 @@ SENSORS: tuple[EhsSensorDescription, ...] = (
         value_fn=lambda c: round(c.energy.elec_today_kwh, 3),
     ),
     EhsSensorDescription(
+        key="compressor_starts_today",
+        icon="mdi:counter",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        value_fn=lambda c: c.starts.today,
+        attrs_fn=lambda c: {
+            "lifetime": c.starts.total,
+            "last_start": c.starts.last_start.isoformat() if c.starts.last_start else None,
+        },
+    ),
+    EhsSensorDescription(
         key="wc_target",
         **TEMP,
         value_fn=lambda c: c.commanded_flow,

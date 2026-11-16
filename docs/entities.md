@@ -36,8 +36,8 @@ On every poll (15 s by default) Home Assistant:
 2. **Updates the learned curve offsets** at each end of the curve from the room error. This only happens while space heating is actually running:
    not paused, not defrosting and not heating the hot water cylinder.
 3. **Calculates the Flow target** from the curve, the learned offset, the room offset and the wind offset.
-4. **Runs the thermostat:** it pauses at *target + overshoot* and resumes at *target*, subject to the
-   minimum on/off times.
+4. **Runs the thermostat:** it pauses at *target + overshoot* and resumes once the room has dropped
+   *restart drop* below that point (target + 0.5 °C by default), subject to the minimum on/off times.
 5. **Switches space heating** on or off at the unit if the thermostat state changed.
 6. **Writes the Flow target** to the unit as the **Flow setpoint**, but only if heating is on, the change is
    at least 0.5 °C, and the last write was at least 5 min ago. Changing the room target or a tuning
@@ -357,6 +357,7 @@ zero, so the heat pump behaves exactly the same but the curve numbers now show w
 | `sensor.samsung_ehs_electrical_power` | Electrical input (W), copied from the power sensor chosen in the options. In simulator mode, when no power sensor is set, it's the simulated value. |
 | `sensor.samsung_ehs_electrical_energy_today` | Electrical energy used today (kWh), integrated from the power above. Resets at local midnight. |
 | `sensor.samsung_ehs_cop_today` | Heat energy today ÷ electrical energy today. Resets at local midnight. |
+| `sensor.samsung_ehs_compressor_starts_today` | Compressor starts today, counted when compressor frequency goes from 0 to above 0. Resets at local midnight. A Home Assistant restart is never counted as a start. Attributes: `lifetime` (all starts since installation) and `last_start`. |
 | `sensor.samsung_ehs_cop_lifetime` | The same since the integration was installed |
 | `sensor.samsung_ehs_heat_energy` | Total heat delivered (kWh), including defrost losses. Can go into the Energy dashboard. |
 | `sensor.samsung_ehs_heat_energy_today` | Heat delivered today (kWh) |
@@ -487,7 +488,8 @@ Assistant cancels a boost.
 
 | Entity | Default | Meaning |
 |---|---|---|
-| `number.samsung_ehs_thermostat_overshoot` | 1.0 K | Pause heating when the room reaches target + this. Resume at target. |
+| `number.samsung_ehs_thermostat_overshoot` | 1.0 K | Pause heating when the room reaches target + this. |
+| `number.samsung_ehs_thermostat_restart_drop` | 0.5 K | Resume heating once the room has fallen this far below the pause point. Set it equal to the overshoot to resume at target. |
 | `number.samsung_ehs_minimum_on_time` | 20 min | Heating can't be paused until it has run this long. 20 min means at most 3 starts per hour. |
 | `number.samsung_ehs_minimum_off_time` | 0 min | Heating can't restart until it has been paused this long |
 

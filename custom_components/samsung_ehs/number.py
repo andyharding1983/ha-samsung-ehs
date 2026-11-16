@@ -29,6 +29,7 @@ from .const import (
     WC_ADAPT_LIMIT,
     WC_ADAPT_RATE,
     WC_HYSTERESIS,
+    WC_RESTART_DROP,
     WC_MIN_OFF,
     WC_MIN_ON,
     WC_ROOM_GAIN,
@@ -120,6 +121,15 @@ NUMBERS: tuple[WcNumberDescription, ...] = (
     WcNumberDescription(
         key=WC_HYSTERESIS,
         native_min_value=0.2,
+        native_max_value=3,
+        native_step=0.1,
+        native_unit_of_measurement=UnitOfTemperature.KELVIN,
+        mode=NumberMode.BOX,
+        entity_category=EntityCategory.CONFIG,
+    ),
+    WcNumberDescription(
+        key=WC_RESTART_DROP,
+        native_min_value=0.1,
         native_max_value=3,
         native_step=0.1,
         native_unit_of_measurement=UnitOfTemperature.KELVIN,
