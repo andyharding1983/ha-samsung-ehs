@@ -52,7 +52,7 @@ async def async_get_config_entry_diagnostics(
                 "7000": [hex(v.nasa_id) for v in R.EXT_INDOOR],
             },
             "assumed_layout": {
-                str(addr): v.key for addr, v in R.extended_layout()
+                str(addr): v.key for addr, v in R.extended_layout(c.client.indoor_base)
             },
             "raw_dump": raw,
         },

@@ -502,3 +502,29 @@ def test_stable_port(tmp_path, monkeypatch) -> None:
     assert cf.stable_port(str(link)) == str(link)
     assert cf.stable_port("simulator") == "simulator"
     assert cf.stable_port(str(tmp_path / "ttyUSB9")) == str(tmp_path / "ttyUSB9")
+
+
+async def test_extended_read_skips_unmapped_registers() -> None:
+    import asyncio
+
+    from custom_components.samsung_ehs.api import EhsClient, EhsConnectionError
+
+    c = EhsClient.__new__(EhsClient)
+    c._lock = asyncio.Lock()
+    c._base = 50
+    c._ext_missing = set()
+    live = {5: 53, 82: 0, 83: 1}  # as seen on the real unit: 6 is not mapped
+    calls = []
+
+    async def fake_read(addr, count):
+        calls.append((addr, count))
+        if any(a not in live for a in range(addr, addr + count)):
+            raise EhsConnectionError("exception 2")
+        return [live[a] for a in range(addr, addr + count)]
+
+    c._read = fake_read
+    assert await c._read_extended() == [53, None, 0, 1]
+    assert c._ext_missing == {6}
+    calls.clear()
+    assert await c._read_extended() == [53, None, 0, 1]
+    assert calls == [(5, 1), (82, 2)]  # unmapped register not retried

@@ -76,13 +76,16 @@ class DhwMode(IntEnum):
 # --- Extended ("hidden") registers ------------------------------------------
 # The MIM-B19N can expose extra NASA values. Writing a list of NASA message
 # IDs to 6000.. (outdoor) and 7000.. (indoor) with function code 16 makes
-# their values readable from address 5 upwards, outdoor IDs first, then
-# indoor IDs, in the order written.
-# NOTE: confirmed by community reports and by the user's previous working
-# config (5 = outdoor temp, 6 = flow rate), but verify on first live run.
+# their values readable, in the order written:
+#   outdoor IDs from address 5 upwards (module area),
+#   indoor IDs from indoor base + 32 upwards (82.. for indoor unit 0).
+# Confirmed on a live unit (2026-11-16): 0x8204 at 5, 0x42E9/0x4067 at 82/83;
+# matches github.com/ZimKev/MIM-B19n_Modbus. Registers outside the mapped
+# range answer with Modbus exception 2 (illegal address).
 EXT_OUTDOOR_ENABLE = 6000
 EXT_INDOOR_ENABLE = 7000
 EXT_READ_START = 5
+EXT_INDOOR_OFFSET = 32
 
 
 @dataclass(frozen=True)
@@ -106,13 +109,10 @@ EXT_INDOOR: tuple[ExtendedValue, ...] = (
 )
 
 
-def extended_layout() -> list[tuple[int, ExtendedValue]]:
-    """Return (address, value) pairs for the extended readback area."""
-    out: list[tuple[int, ExtendedValue]] = []
-    addr = EXT_READ_START
-    for val in (*EXT_OUTDOOR, *EXT_INDOOR):
-        out.append((addr, val))
-        addr += 1
+def extended_layout(base: int = 50) -> list[tuple[int, ExtendedValue]]:
+    """Return (address, value) pairs for the extended readback areas."""
+    out = [(EXT_READ_START + i, v) for i, v in enumerate(EXT_OUTDOOR)]
+    out += [(base + EXT_INDOOR_OFFSET + i, v) for i, v in enumerate(EXT_INDOOR)]
     return out
 
 
@@ -183,7 +183,9 @@ class EhsData:
         return round(self.water_out - self.water_in, 1)
 
 
-def decode(module: list[int], indoor: list[int], ext: list[int] | None) -> EhsData:
+def decode(
+    module: list[int], indoor: list[int], ext: list[int | None] | None
+) -> EhsData:
     """Decode raw register blocks into an EhsData snapshot."""
     if len(module) < MODULE_BLOCK[1] or len(indoor) < INDOOR_BLOCK_LEN:
         raise ValueError("short register read")
@@ -209,9 +211,11 @@ def decode(module: list[int], indoor: list[int], ext: list[int] | None) -> EhsDa
     )
     if ext is not None:
         layout = extended_layout()
+        # ext is aligned with the layout; None marks a register that could
+        # not be read (not mapped on this unit).
         d.extended = {
             val.key: decode_extended(ext[i], val)
             for i, (_addr, val) in enumerate(layout)
-            if i < len(ext)
+            if i < len(ext) and ext[i] is not None
         }
     return d

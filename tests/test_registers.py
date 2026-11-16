@@ -57,7 +57,15 @@ def test_decode_snapshot():
 
 def test_extended_layout_order():
     keys = [(a, v.key) for a, v in R.extended_layout()]
-    assert keys == [(5, "outdoor_temp"), (6, "compressor_freq"), (7, "flow_rate"), (8, "dhw_valve")]
+    assert keys == [
+        (5, "outdoor_temp"), (6, "compressor_freq"), (82, "flow_rate"), (83, "dhw_valve")
+    ]
+    assert [a for a, _ in R.extended_layout(100)][2:] == [132, 133]
+
+
+def test_missing_extended_values_skipped():
+    d = R.decode([0, 0, 0], [0] * R.INDOOR_BLOCK_LEN, [53, None, 0, 1])
+    assert d.extended == {"outdoor_temp": 5.3, "flow_rate": 0.0, "dhw_valve": 1.0}
 
 
 def test_short_read_rejected():

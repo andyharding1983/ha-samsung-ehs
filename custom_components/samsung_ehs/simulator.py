@@ -104,7 +104,7 @@ class SimulatedClient:
         indoor = [self._regs.get(self._base + i, 0) for i in range(R.INDOOR_BLOCK_LEN)]
         ext = None
         if extended:
-            ext = [self._regs.get(a, 0) for a, _ in R.extended_layout()]
+            ext = [self._regs.get(a, 0) for a, _ in R.extended_layout(self._base)]
         data = R.decode(module, indoor, ext)
         if data.extended is not None:
             data.extended["sim_power"] = round(self.power_w, 1)
@@ -198,5 +198,5 @@ class SimulatedClient:
             flow_rate=int(FLOW_RATE_LPM * 10) if pumping else 0,
             dhw_valve=1 if self._dhw_heating else 0,
         )
-        for addr, val in R.extended_layout():
+        for addr, val in R.extended_layout(self._base):
             self._set(addr, ext.get(val.key, 0))

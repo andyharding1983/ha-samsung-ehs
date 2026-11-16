@@ -230,16 +230,22 @@ writes:
 | 6000 | `0x8204`, `0x8238` | Outdoor temperature (×10 °C), compressor frequency (Hz) |
 | 7000 | `0x42E9`, `0x4067` | Water flow rate (×10 L/min), 3-way valve (0 = heating, 1 = hot water) |
 
-The values then appear as read-only registers. Outdoor IDs appear in order from address 5,
-so outdoor temperature is at 5 and compressor frequency at 6.
+The values then appear as read-only registers in the order written. Outdoor values start at
+address **5** and indoor values at **indoor base + 32**, which is **82** for indoor unit 0.
+This was confirmed on a live unit:
 
-> **Still to confirm on a live unit:** where the *indoor* values (flow rate, 3-way valve)
-> appear. The integration currently reads them straight after the outdoor ones, at 7 and 8.
-> ZimKev's tested configuration instead reads indoor values from **82** onwards (indoor
-> base 50 + 32). If the flow rate or valve sensors look wrong, please open an issue and
-> attach the **diagnostics download** (Settings → Devices & services → Samsung EHS → ⋮ →
-> Download diagnostics). It includes a raw dump of registers 0–130, read just after the
-> enable writes.
+| Read addr | NASA ID | Value | Live check |
+|---|---|---|---|
+| 5 | `0x8204` | Outdoor temperature ×10 | ✅ |
+| 6 | `0x8238` | Compressor frequency (Hz) | ❓ not mapped on the first test unit |
+| 82 | `0x42E9` | Water flow rate ×10 (L/min) | ✅ |
+| 83 | `0x4067` | 3-way valve | ✅ |
+
+Addresses outside the mapped range answer with Modbus exception 2. Each value is read
+separately, so a value the unit doesn't provide just shows as unknown. If something looks
+wrong, please open an issue and attach the **diagnostics download** (Settings → Devices &
+services → Samsung EHS → ⋮ → Download diagnostics). It includes a raw dump of registers
+0–130, read just after the enable writes.
 
 ## Debug logging
 

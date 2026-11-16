@@ -44,6 +44,7 @@ class EhsClient:
         params = inspect.signature(self._client.read_holding_registers).parameters
         self._unit_kw = "device_id" if "device_id" in params else "slave"
         self._extended_enabled = False
+        self._ext_missing: set[int] = set()
 
     @property
     def indoor_base(self) -> int:
@@ -130,6 +131,39 @@ class EhsClient:
                     raise EhsConnectionError(f"extended enable at {addr} failed: {rr}")
                 await asyncio.sleep(INTER_REQUEST_DELAY)
             self._extended_enabled = True
+            self._ext_missing.clear()
+
+    async def _read_extended(self) -> list[int | None]:
+        """Read the outdoor and indoor extended areas.
+
+        Each area is read in one request; if the module refuses it (one of the
+        addresses isn't mapped), its registers are read one by one and the
+        missing ones remembered so they aren't retried on every poll.
+        """
+        layout = R.extended_layout(self._base)
+        values: dict[int, int | None] = {}
+        areas: dict[bool, list[int]] = {}
+        for addr, val in layout:
+            areas.setdefault(val in R.EXT_INDOOR, []).append(addr)
+        for addrs in areas.values():
+            wanted = [a for a in addrs if a not in self._ext_missing]
+            if not wanted:
+                continue
+            start, count = wanted[0], wanted[-1] - wanted[0] + 1
+            if count == len(wanted):
+                try:
+                    for i, v in enumerate(await self._read(start, count)):
+                        values[start + i] = v
+                    continue
+                except EhsConnectionError:
+                    pass
+            for a in wanted:
+                try:
+                    values[a] = (await self._read(a, 1))[0]
+                except EhsConnectionError as err:
+                    _LOGGER.debug("extended register %s not available: %s", a, err)
+                    self._ext_missing.add(a)
+        return [values.get(a) for a, _ in layout]
 
     async def read_all(self, extended: bool) -> R.EhsData:
         """Read and decode everything in as few requests as possible."""
@@ -144,11 +178,7 @@ class EhsClient:
                 raise
             ext = None
             if extended and self._extended_enabled:
-                n = len(R.extended_layout())
-                try:
-                    ext = await self._read(R.EXT_READ_START, n)
-                except EhsConnectionError as err:
-                    _LOGGER.debug("extended read failed: %s", err)
+                ext = await self._read_extended()
         if extended and not self._extended_enabled:
             try:
                 await self.enable_extended()
