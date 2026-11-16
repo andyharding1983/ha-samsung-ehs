@@ -306,6 +306,8 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         if self.power_w is None and not self.power_sensor:
             # Simulator provides its own electrical power.
             self.power_w = (data.extended or {}).get("sim_power")
+        if self.power_w is not None and self.power_w < 0:
+            self.power_w = 0.0  # meter noise at standby
         self.cop = instant_cop(self.heat_w, self.power_w)
         now = dt_util.now()
         self.energy.update(now, self.heat_w, self.power_w)
