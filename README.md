@@ -205,17 +205,31 @@ From Samsung's MIM-B19N installation manual (Table 2). PDU addresses, indoor uni
 
 ### Extended registers
 
-Values that aren't in the standard table are exposed by writing NASA message IDs to
-6000 (outdoor) and 7000 (indoor). The integration requests:
+The MIM-B19N can expose extra NASA values that aren't in its standard register table.
+You enable them by writing a list of NASA message IDs to holding register **6000**
+(outdoor unit values) and **7000** (indoor unit values), all in one *Write Multiple
+Registers* request (function code 16). This is the same method used by
+[ZimKev/MIM-B19n_Modbus](https://github.com/ZimKev/MIM-B19n_Modbus), which lists many more
+IDs.
 
-| Read addr | NASA ID | Value |
+**The integration does this for you.** You don't need an automation or a
+`modbus.write_register` call. It sends the enable writes when it connects, and again after
+any loss of communication, because the module forgets the list when it loses power. It
+writes:
+
+| Enable register | NASA IDs written | Values |
 |---|---|---|
-| 5 | `0x8204` | Outdoor temperature ×10 |
-| 6 | `0x8238` | Compressor frequency (Hz) |
-| 7 | `0x42E9` | Water flow rate ×10 (L/min) |
+| 6000 | `0x8204`, `0x8238` | Outdoor temperature (×10 °C), compressor frequency (Hz) |
+| 7000 | `0x42E9`, `0x4067` | Water flow rate (×10 L/min), 3-way valve (0 = heating, 1 = hot water) |
 
-This mechanism isn't in Samsung's public manual. If these sensors look wrong on your unit,
-please open an issue with a debug log.
+The values then appear as read-only registers. Outdoor IDs appear in order from address 5,
+so outdoor temperature is at 5 and compressor frequency at 6.
+
+> **Still to confirm on a live unit:** where the *indoor* values (flow rate, 3-way valve)
+> appear. The integration currently reads them straight after the outdoor ones, at 7 and 8.
+> ZimKev's tested configuration instead reads indoor values from **82** onwards (indoor
+> base 50 + 32). If the flow rate or valve sensors look wrong, please open an issue with a
+> debug log.
 
 ## Debug logging
 
