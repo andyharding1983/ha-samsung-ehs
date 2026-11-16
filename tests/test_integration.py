@@ -513,7 +513,7 @@ async def test_extended_read_skips_unmapped_registers() -> None:
     c._lock = asyncio.Lock()
     c._base = 50
     c._ext_missing = set()
-    live = {5: 53, 82: 0, 83: 1}  # as seen on the real unit: 6 is not mapped
+    live = {4: 53, 82: 0, 83: 1}  # pretend 5 is not mapped
     calls = []
 
     async def fake_read(addr, count):
@@ -524,7 +524,7 @@ async def test_extended_read_skips_unmapped_registers() -> None:
 
     c._read = fake_read
     assert await c._read_extended() == [53, None, 0, 1]
-    assert c._ext_missing == {6}
+    assert c._ext_missing == {5}
     calls.clear()
     assert await c._read_extended() == [53, None, 0, 1]
-    assert calls == [(5, 1), (82, 2)]  # unmapped register not retried
+    assert calls == [(4, 1), (82, 2)]  # unmapped register not retried

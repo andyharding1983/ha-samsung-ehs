@@ -231,15 +231,15 @@ writes:
 | 7000 | `0x42E9`, `0x4067` | Water flow rate (×10 L/min), 3-way valve (0 = heating, 1 = hot water) |
 
 The values then appear as read-only registers in the order written. Outdoor values start at
-address **5** and indoor values at **indoor base + 32**, which is **82** for indoor unit 0.
+address **4** and indoor values at **indoor base + 32**, which is **82** for indoor unit 0.
 This was confirmed on a live unit:
 
 | Read addr | NASA ID | Value | Live check |
 |---|---|---|---|
-| 5 | `0x8204` | Outdoor temperature ×10 | ✅ |
-| 6 | `0x8238` | Compressor frequency (Hz) | ❓ not mapped on the first test unit |
-| 82 | `0x42E9` | Water flow rate ×10 (L/min) | ✅ |
-| 83 | `0x4067` | 3-way valve | ✅ |
+| 4 | `0x8204` | Outdoor temperature ×10 | ✅ |
+| 5 | `0x8238` | Compressor frequency (Hz) | ✅ mapped, to be confirmed while running |
+| 82 | `0x42E9` | Water flow rate ×10 (L/min) | ✅ mapped, to be confirmed while pumping |
+| 83 | `0x4067` | 3-way valve | ✅ mapped |
 
 Addresses outside the mapped range answer with Modbus exception 2. Each value is read
 separately, so a value the unit doesn't provide just shows as unknown. If something looks

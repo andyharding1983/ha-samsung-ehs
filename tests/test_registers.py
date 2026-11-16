@@ -58,7 +58,7 @@ def test_decode_snapshot():
 def test_extended_layout_order():
     keys = [(a, v.key) for a, v in R.extended_layout()]
     assert keys == [
-        (5, "outdoor_temp"), (6, "compressor_freq"), (82, "flow_rate"), (83, "dhw_valve")
+        (4, "outdoor_temp"), (5, "compressor_freq"), (82, "flow_rate"), (83, "dhw_valve")
     ]
     assert [a for a, _ in R.extended_layout(100)][2:] == [132, 133]
 

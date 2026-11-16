@@ -77,14 +77,15 @@ class DhwMode(IntEnum):
 # The MIM-B19N can expose extra NASA values. Writing a list of NASA message
 # IDs to 6000.. (outdoor) and 7000.. (indoor) with function code 16 makes
 # their values readable, in the order written:
-#   outdoor IDs from address 5 upwards (module area),
+#   outdoor IDs from address 4 upwards (module area),
 #   indoor IDs from indoor base + 32 upwards (82.. for indoor unit 0).
-# Confirmed on a live unit (2026-11-16): 0x8204 at 5, 0x42E9/0x4067 at 82/83;
+# Confirmed on a live unit (2026-11-16): 0x8204/0x8238 at 4/5, indoor area
+# 82/83 readable;
 # matches github.com/ZimKev/MIM-B19n_Modbus. Registers outside the mapped
 # range answer with Modbus exception 2 (illegal address).
 EXT_OUTDOOR_ENABLE = 6000
 EXT_INDOOR_ENABLE = 7000
-EXT_READ_START = 5
+EXT_READ_START = 4
 EXT_INDOOR_OFFSET = 32
 
 
