@@ -67,29 +67,54 @@ views:
     - type: heading
       heading: Weather compensation
       icon: mdi:weather-partly-cloudy
-    - type: markdown
+    - type: entities
       grid_options:
         columns: 12
-      content: |-
-        {%- set f = 'sensor.samsung_ehs_flow_target' -%}
-        {%- set c = 'climate.samsung_ehs' -%}
-        {%- set fo = state_attr(f, 'forecast_offset') | float(0) -%}
-        {%- set ws = state_attr(f, 'wind_speed') -%}
-        {%- set fm = state_attr(f, 'forecast_mean') -%}
-        {%- set bu = state_attr(f, 'boost_until') -%}
-        {%- set lim = state_attr(f, 'limited') -%}
-        {%- if state_attr(f, 'heating_needed') == false -%}
-        Outdoor {{ state_attr(f, 'effective_outdoor') }} °C is above the heating cut-off, so heating is off.
-        {%- else -%}
-        | Factor | Why | Effect |
-        |:--|:--|--:|
-        | Curve | Outdoor {{ states('sensor.samsung_ehs_outdoor_temperature') }} °C | {{ '%.1f' | format(state_attr(f, 'curve_flow') | float(0) - fo) }} °C |
-        | Forecast | {{ ('Avg %s °C, uses %s °C' | format(fm, state_attr(f, 'effective_outdoor'))) if fm is not none else 'No forecast' }} | {{ '%+.1f' | format(fo) }} K |
-        | Learned | Room history | {{ '%+.1f' | format(state_attr(f, 'adaptive_offset') | float(0)) }} K |
-        | Room | {{ state_attr(c, 'current_temperature') }} °C, target {{ state_attr(c, 'temperature') }} °C | {{ '%+.1f' | format(state_attr(f, 'room_offset') | float(0)) }} K |
-        | Wind | {{ ('%s m/s' | format(ws)) if ws is not none else 'No weather' }} | {{ '%+.1f' | format(state_attr(f, 'wind_offset') | float(0)) }} K |
-        | **Flow target** | {{ ('Boost to ' ~ (as_timestamp(bu) | timestamp_custom('%H:%M'))) if bu else 'Held at max' if lim == 1 else 'Held at min' if lim == -1 else 'Rounded to 0.5' }} | **{{ states(f) }} °C** |
-        {%- endif %}
+      entities:
+      - entity: sensor.samsung_ehs_outdoor_temperature
+        name: Outdoor now
+      - type: attribute
+        entity: sensor.samsung_ehs_flow_target
+        attribute: forecast_mean
+        name: Forecast average
+        icon: mdi:weather-partly-cloudy
+        suffix: ' °C'
+      - type: attribute
+        entity: sensor.samsung_ehs_flow_target
+        attribute: effective_outdoor
+        name: Outdoor used by curve
+        icon: mdi:thermometer-check
+        suffix: ' °C'
+      - type: attribute
+        entity: sensor.samsung_ehs_flow_target
+        attribute: curve_flow
+        name: Heating curve
+        icon: mdi:chart-bell-curve-cumulative
+        suffix: ' °C'
+      - type: section
+        label: Adjustments
+      - type: attribute
+        entity: sensor.samsung_ehs_flow_target
+        attribute: adaptive_offset
+        name: Learned
+        icon: mdi:school
+        suffix: ' K'
+      - type: attribute
+        entity: sensor.samsung_ehs_flow_target
+        attribute: room_offset
+        name: Room
+        icon: mdi:home-thermometer
+        suffix: ' K'
+      - type: attribute
+        entity: sensor.samsung_ehs_flow_target
+        attribute: wind_offset
+        name: Wind
+        icon: mdi:weather-windy
+        suffix: ' K'
+      - type: divider
+      - entity: sensor.samsung_ehs_flow_target
+        name: Flow target
+        icon: mdi:thermometer-water
     - type: custom:apexcharts-card
       grid_options:
         columns: full
