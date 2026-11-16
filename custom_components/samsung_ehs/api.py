@@ -22,6 +22,13 @@ class EhsConnectionError(Exception):
     """Raised when the MIM-B19N cannot be reached or returns an error."""
 
 
+class EhsIllegalAddress(EhsConnectionError):
+    """The module answered with Modbus exception 2: the register isn't mapped."""
+
+
+ILLEGAL_DATA_ADDRESS = 2
+
+
 class EhsClient:
     """Thin, serialised wrapper around pymodbus for one MIM-B19N."""
 
@@ -69,6 +76,8 @@ class EhsClient:
         except ModbusException as err:
             raise EhsConnectionError(str(err)) from err
         if rr.isError():
+            if getattr(rr, "exception_code", None) == ILLEGAL_DATA_ADDRESS:
+                raise EhsIllegalAddress(f"read {address}+{count}: not mapped")
             raise EhsConnectionError(f"read {address}+{count} failed: {rr}")
         await asyncio.sleep(INTER_REQUEST_DELAY)
         return list(rr.registers)
@@ -160,9 +169,12 @@ class EhsClient:
             for a in wanted:
                 try:
                     values[a] = (await self._read(a, 1))[0]
-                except EhsConnectionError as err:
+                except EhsIllegalAddress as err:
                     _LOGGER.debug("extended register %s not available: %s", a, err)
                     self._ext_missing.add(a)
+                except EhsConnectionError as err:
+                    # A glitch (timeout/CRC): leave it for the next poll.
+                    _LOGGER.debug("extended register %s read failed: %s", a, err)
         return [values.get(a) for a, _ in layout]
 
     async def read_all(self, extended: bool) -> R.EhsData:

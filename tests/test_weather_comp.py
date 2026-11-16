@@ -9,7 +9,7 @@ def test_curve_endpoints_and_clamp():
     assert W.curve_flow(P, -3) == pytest.approx(45)
     assert W.curve_flow(P, 15) == pytest.approx(25)
     assert W.curve_flow(P, 6) == pytest.approx(35)
-    assert W.curve_flow(P, -20) == P.flow_max or W.curve_flow(P, -20) <= P.flow_max
+    assert W.curve_flow(P, -20) == P.flow_max  # 45 + 17*(20/18) = 63.9 -> 55
     assert W.curve_flow(P, 30) == P.flow_min
 
 
@@ -100,3 +100,9 @@ def test_forecast_offset():
     assert r.forecast_offset == round(W.curve_flow(p, 3.0) - W.curve_flow(p, 5.0), 2)
     assert r.forecast_offset > 0
     assert W.compute(p, 5.0).forecast_offset == 0.0
+
+
+def test_crossed_limits_keep_the_ceiling():
+    p = W.WcParams(flow_min=50.0, flow_max=40.0)
+    assert W.curve_flow(p, 15) == 40.0
+    assert W.curve_flow(p, -10) == 40.0

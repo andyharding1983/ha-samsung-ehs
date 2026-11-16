@@ -5,11 +5,30 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any
 
+from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.core import HomeAssistant
 
 from . import EhsConfigEntry
 from . import registers as R
 from .api import EhsConnectionError
+from .const import (
+    CONF_DHW_SCHEDULE,
+    CONF_OUTDOOR_SENSOR,
+    CONF_PORT,
+    CONF_POWER_SENSOR,
+    CONF_ROOM_SENSOR,
+    CONF_WEATHER_ENTITY,
+)
+
+# The by-id port holds the adapter's serial number; entity ids name rooms.
+TO_REDACT = {
+    CONF_PORT,
+    CONF_ROOM_SENSOR,
+    CONF_POWER_SENSOR,
+    CONF_WEATHER_ENTITY,
+    CONF_OUTDOOR_SENSOR,
+    CONF_DHW_SCHEDULE,
+}
 
 DUMP_START = 0
 DUMP_END = 130
@@ -30,7 +49,10 @@ async def async_get_config_entry_diagnostics(
             for a, v in sorted(raw["registers"].items())
         }
     return {
-        "entry": {"data": dict(entry.data), "options": dict(entry.options)},
+        "entry": {
+            "data": async_redact_data(dict(entry.data), TO_REDACT),
+            "options": async_redact_data(dict(entry.options), TO_REDACT),
+        },
         "last_update_success": c.last_update_success,
         "data": asdict(c.data) if c.data else None,
         "weather_compensation": {

@@ -40,6 +40,7 @@
     },
     "abort": {
       "already_configured": "This heat pump is already configured.",
+      "port_in_use": "That serial port is already used by another Samsung EHS entry. An RS485 bus can only have one master.",
       "reconfigure_successful": "Connection updated."
     }
   },

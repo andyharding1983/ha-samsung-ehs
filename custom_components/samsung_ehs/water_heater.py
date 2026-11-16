@@ -91,6 +91,7 @@ class EhsWaterHeater(EhsEntity, WaterHeaterEntity):
     async def async_set_temperature(self, **kwargs: Any) -> None:
         temp = kwargs.get(ATTR_TEMPERATURE)
         if temp is not None:
+            temp = min(max(float(temp), R.DHW_SET_MIN), R.DHW_SET_MAX)
             await self.coordinator.async_write(R.IU_DHW_SET, R.encode_temp(temp))
 
     async def async_set_operation_mode(self, operation_mode: str) -> None:

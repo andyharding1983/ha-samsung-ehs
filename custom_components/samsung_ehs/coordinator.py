@@ -13,7 +13,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
 from homeassistant.helpers.event import async_track_state_change_event
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
@@ -49,6 +49,10 @@ from .const import (
     WC_MIN_ON,
     WC_ROOM_TARGET,
     WC_WRITE_DEADBAND,
+    FLOW_DESIGN_LIMITS,
+    FLOW_MILD_LIMITS,
+    ROOM_TARGET_MAX,
+    ROOM_TARGET_MIN,
 )
 from .control import AdaptiveCurve, StartCounter, Thermostat
 from .cop import EnergyTracker, heat_output_w, instant_cop
@@ -155,6 +159,8 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         self._last_control: float | None = None
         self._last_flow_write: float | None = None
         self._control_lock = asyncio.Lock()
+        self._control_rerun = False
+        self._control_force = False
         self._forecast: list[tuple[datetime, float, float | None]] | None = None
         self.boost_until: datetime | None = None
         self.dhw_boost_until: datetime | None = None
@@ -434,7 +440,14 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         )
 
     async def async_set_wc_param(self, key: str, value: float) -> None:
-        self.wc_params[key] = value
+        p = self.wc_params
+        if (key == "wc_flow_min" and value > p["wc_flow_max"]) or (
+            key == "wc_flow_max" and value < p["wc_flow_min"]
+        ):
+            raise ServiceValidationError(
+                "Minimum flow temperature must not be above the maximum"
+            )
+        p[key] = value
         self._apply_thermostat_params()
         await self.async_control(force_flow=True)
 
@@ -449,6 +462,10 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
 
     async def async_set_emitter(self, emitter: str) -> None:
         """Switch emitter type and apply its preset values."""
+        if emitter != self.emitter:
+            # Offsets learned for one emitter type don't fit another.
+            self.adaptive.reset()
+            self._store.async_delay_save(self._store_data, 1)
         self.emitter = emitter
         self.wc_params.update(EMITTER_PRESETS[emitter])
         self._apply_thermostat_params()
@@ -464,8 +481,10 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
     async def async_apply_learned_curve(self) -> None:
         """Fold the learned end offsets into the curve points and reset them."""
         p = self.wc_params
-        p["wc_flow_design"] = round(p["wc_flow_design"] + self.adaptive.design, 1)
-        p["wc_flow_mild"] = round(p["wc_flow_mild"] + self.adaptive.mild, 1)
+        lo, hi = FLOW_DESIGN_LIMITS
+        p["wc_flow_design"] = round(min(max(p["wc_flow_design"] + self.adaptive.design, lo), hi), 1)
+        lo, hi = FLOW_MILD_LIMITS
+        p["wc_flow_mild"] = round(min(max(p["wc_flow_mild"] + self.adaptive.mild, lo), hi), 1)
         self.adaptive.reset()
         self._store.async_delay_save(self._store_data, 1)
         await self.async_control(force_flow=True)
@@ -480,6 +499,7 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         return self.wc_params[WC_ROOM_TARGET]
 
     async def async_set_room_target(self, value: float) -> None:
+        value = min(max(value, ROOM_TARGET_MIN), ROOM_TARGET_MAX)
         await self.async_set_wc_param(WC_ROOM_TARGET, value)
 
     async def async_set_heating(self, enabled: bool) -> None:
@@ -518,10 +538,19 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
 
     async def async_control(self, force_flow: bool = False) -> None:
         """Thermostat, adaptive offset and weather compensation in one pass."""
+        self._control_force |= force_flow
         if self._control_lock.locked():
+            # A pass is running: run again straight after it, so a request
+            # (e.g. Boost) made mid-pass isn't lost.
+            self._control_rerun = True
             return
         async with self._control_lock:
-            await self._async_control(force_flow)
+            while True:
+                self._control_rerun = False
+                force, self._control_force = self._control_force, False
+                await self._async_control(force)
+                if not self._control_rerun:
+                    break
 
     async def _async_control(self, force_flow: bool) -> None:
         data = self.data

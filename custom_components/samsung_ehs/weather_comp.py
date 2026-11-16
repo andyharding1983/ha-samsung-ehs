@@ -66,7 +66,8 @@ WIND_MAX_OFFSET = 3.0  # K
 
 
 def _clamp(val: float, lo: float, hi: float) -> float:
-    return max(lo, min(hi, val))
+    # If the limits cross, the upper one wins: it protects the emitters.
+    return min(hi, max(lo, val))
 
 
 def curve_flow(p: WcParams, outdoor: float) -> float:

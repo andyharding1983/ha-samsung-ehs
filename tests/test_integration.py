@@ -252,7 +252,8 @@ async def test_no_learning_during_hot_water(hass: HomeAssistant, client) -> None
     c = hass.config_entries.async_entries(DOMAIN)[0].runtime_data
     c._last_control -= 1800  # pretend half an hour passed
     await c.async_control()
-    assert (c.adaptive.design, c.adaptive.mild) == (0.0, 0.0)
+    assert c.adaptive.design == pytest.approx(0, abs=0.01)
+    assert c.adaptive.mild == pytest.approx(0, abs=0.01)
 
 
 async def test_heating_only_hides_hot_water(hass: HomeAssistant, client) -> None:
@@ -510,7 +511,7 @@ def test_stable_port(tmp_path, monkeypatch) -> None:
 async def test_extended_read_skips_unmapped_registers() -> None:
     import asyncio
 
-    from custom_components.samsung_ehs.api import EhsClient, EhsConnectionError
+    from custom_components.samsung_ehs.api import EhsClient, EhsIllegalAddress
 
     c = EhsClient.__new__(EhsClient)
     c._lock = asyncio.Lock()
@@ -522,7 +523,7 @@ async def test_extended_read_skips_unmapped_registers() -> None:
     async def fake_read(addr, count):
         calls.append((addr, count))
         if any(a not in live for a in range(addr, addr + count)):
-            raise EhsConnectionError("exception 2")
+            raise EhsIllegalAddress("exception 2")
         return [live[a] for a in range(addr, addr + count)]
 
     c._read = fake_read
@@ -531,3 +532,269 @@ async def test_extended_read_skips_unmapped_registers() -> None:
     calls.clear()
     assert await c._read_extended() == [53, None, 0, 1]
     assert calls == [(4, 1), (82, 2)]  # unmapped register not retried
+
+
+# --- Write path against a stubbed pymodbus client -------------------------
+
+
+class _Resp:
+    def __init__(self, registers=None, exception_code=None):
+        self.registers = registers or []
+        self.exception_code = exception_code
+
+    def isError(self):  # noqa: N802 - pymodbus API
+        return self.exception_code is not None
+
+
+class _FakeModbus:
+    """Mimics pymodbus >= 3.10 (device_id=)."""
+
+    def __init__(self, **kw):
+        self.connected = True
+        self.calls = []
+        self.regs: dict[int, int] = {}
+
+    async def connect(self):
+        return True
+
+    def close(self):
+        pass
+
+    async def read_holding_registers(self, address, *, count=1, device_id=0):
+        self.calls.append(("read", address, count, device_id))
+        if any(a not in self.regs for a in range(address, address + count)):
+            return _Resp(exception_code=2)
+        return _Resp([self.regs[a] for a in range(address, address + count)])
+
+    async def write_register(self, address, value, *, device_id=0):
+        self.calls.append(("write", address, value, device_id))
+        return _Resp([])
+
+    async def write_registers(self, address, values, *, device_id=0):
+        self.calls.append(("write_many", address, list(values), device_id))
+        return _Resp([])
+
+
+class _OldFakeModbus(_FakeModbus):
+    """Mimics pymodbus < 3.10 (slave=)."""
+
+    async def read_holding_registers(self, address, *, count=1, slave=0):
+        return await super().read_holding_registers(address, count=count, device_id=slave)
+
+    async def write_register(self, address, value, *, slave=0):
+        return await super().write_register(address, value, device_id=slave)
+
+
+def _real_client(fake_cls, slave=3):
+    from custom_components.samsung_ehs import api
+
+    with patch.object(api, "AsyncModbusSerialClient", fake_cls), patch.object(
+        api, "INTER_REQUEST_DELAY", 0
+    ):
+        c = api.EhsClient("/dev/null", slave)
+    return c
+
+
+@pytest.mark.parametrize("fake_cls", [_FakeModbus, _OldFakeModbus])
+async def test_write_path_addresses_and_encoding(fake_cls) -> None:
+    from custom_components.samsung_ehs import api
+
+    c = _real_client(fake_cls)
+    with patch.object(api, "INTER_REQUEST_DELAY", 0):
+        await c.write_indoor(R.IU_WATER_OUT_SET, R.encode_temp(-2.5))
+        await c.write(R.IU_DHW_SET, R.encode_temp(48.0))
+    assert c._client.calls == [
+        ("write", 50 + R.IU_WATER_OUT_SET, 0xFFE7, 3),  # -25 as 16-bit
+        ("write", R.IU_DHW_SET, 480, 3),
+    ]
+
+
+async def test_enable_extended_writes_nasa_ids() -> None:
+    from custom_components.samsung_ehs import api
+
+    c = _real_client(_FakeModbus, slave=1)
+    with patch.object(api, "INTER_REQUEST_DELAY", 0):
+        await c.enable_extended()
+    assert c._client.calls == [
+        ("write_many", R.EXT_OUTDOOR_ENABLE, [v.nasa_id for v in R.EXT_OUTDOOR], 1),
+        ("write_many", R.EXT_INDOOR_ENABLE, [v.nasa_id for v in R.EXT_INDOOR], 1),
+    ]
+
+
+async def test_illegal_address_is_distinguished() -> None:
+    from custom_components.samsung_ehs import api
+
+    c = _real_client(_FakeModbus)
+    c._client.regs = {4: 53}
+    with patch.object(api, "INTER_REQUEST_DELAY", 0):
+        assert await c._read(4, 1) == [53]
+        with pytest.raises(api.EhsIllegalAddress):
+            await c._read(5, 1)
+
+
+async def test_extended_glitch_is_retried_next_poll() -> None:
+    import asyncio
+
+    from custom_components.samsung_ehs.api import EhsClient, EhsConnectionError
+
+    c = EhsClient.__new__(EhsClient)
+    c._lock = asyncio.Lock()
+    c._base = 50
+    c._ext_missing = set()
+    glitch = {5}
+
+    async def fake_read(addr, count):
+        if any(a in glitch for a in range(addr, addr + count)):
+            raise EhsConnectionError("timeout")
+        return [1] * count
+
+    c._read = fake_read
+    assert await c._read_extended() == [1, None, 1, 1]
+    assert c._ext_missing == set()  # a timeout doesn't blacklist it
+    glitch.clear()
+    assert await c._read_extended() == [1, 1, 1, 1]
+
+
+# --- Review fixes ----------------------------------------------------------
+
+
+def _entity(hass, domain, entity_id):
+    return hass.data[domain].get_entity(entity_id)
+
+
+async def test_dhw_setpoint_clamped(hass: HomeAssistant, client) -> None:
+    await _setup(hass)
+    wh = _entity(hass, "water_heater", "water_heater.samsung_ehs_hot_water")
+    await wh.async_set_temperature(temperature=95)
+    client.write_indoor.assert_any_await(R.IU_DHW_SET, 700)
+    await wh.async_set_temperature(temperature=-10)
+    client.write_indoor.assert_any_await(R.IU_DHW_SET, 300)
+
+
+async def test_room_target_clamped(hass: HomeAssistant, client) -> None:
+    await _setup(hass)
+    c = hass.config_entries.async_entries(DOMAIN)[0].runtime_data
+    await c.async_set_room_target(100.0)
+    assert c.room_target == 28.0
+
+
+async def test_restore_unavailable_keeps_default(hass: HomeAssistant, client) -> None:
+    from homeassistant.core import State
+    from pytest_homeassistant_custom_component.common import mock_restore_cache
+
+    mock_restore_cache(hass, [State("climate.samsung_ehs", "unavailable", {"temperature": 99})])
+    await _setup(hass)
+    c = hass.config_entries.async_entries(DOMAIN)[0].runtime_data
+    assert c.heating_enabled is True
+    assert c.room_target == 28.0
+
+
+async def test_restore_off_stays_off(hass: HomeAssistant, client) -> None:
+    from homeassistant.core import State
+    from pytest_homeassistant_custom_component.common import mock_restore_cache
+
+    mock_restore_cache(hass, [State("climate.samsung_ehs", "off", {"temperature": 20})])
+    await _setup(hass)
+    assert hass.states.get("climate.samsung_ehs").state == "off"
+
+
+async def test_flow_min_above_max_rejected(hass: HomeAssistant, client) -> None:
+    from homeassistant.exceptions import ServiceValidationError
+
+    await _setup(hass)
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            "number", "set_value",
+            {"entity_id": "number.samsung_ehs_minimum_flow_temperature", "value": 50},
+            blocking=True,
+        )
+
+
+async def test_emitter_change_resets_learning(hass: HomeAssistant, client) -> None:
+    await _setup(hass)
+    c = hass.config_entries.async_entries(DOMAIN)[0].runtime_data
+    c.adaptive.design, c.adaptive.mild = 4.0, 2.0
+    await c.async_set_emitter("underfloor")  # same type: kept
+    assert c.adaptive.design == pytest.approx(4.0, abs=0.01)
+    await c.async_set_emitter("radiators")
+    assert c.adaptive.design == pytest.approx(0, abs=0.01)
+    assert c.adaptive.mild == pytest.approx(0, abs=0.01)
+
+
+async def test_apply_learned_curve_clamped(hass: HomeAssistant, client) -> None:
+    await _setup(hass)
+    c = hass.config_entries.async_entries(DOMAIN)[0].runtime_data
+    c.wc_params["wc_flow_design"] = 54.0
+    c.adaptive.design, c.adaptive.mild = 5.0, -30.0
+    await c.async_apply_learned_curve()
+    assert c.wc_params["wc_flow_design"] == 55.0
+    assert c.wc_params["wc_flow_mild"] == 15.0
+
+
+async def test_control_request_during_pass_is_rerun(hass: HomeAssistant, client) -> None:
+    await _setup(hass)
+    c = hass.config_entries.async_entries(DOMAIN)[0].runtime_data
+    seen = []
+
+    async def fake(force):
+        seen.append(force)
+        if len(seen) == 1:  # Boost pressed while this pass holds the lock
+            await c.async_control(force_flow=True)
+
+    c._async_control = fake
+    await c.async_control()
+    assert seen == [False, True]
+
+
+async def test_heat_energy_today_is_total_with_reset(hass: HomeAssistant, client) -> None:
+    await _setup(hass)
+    st = hass.states.get("sensor.samsung_ehs_heat_energy_today")
+    assert st.attributes["state_class"] == "total"
+    assert st.attributes["last_reset"]
+
+
+async def test_diagnostics_redacted(hass: HomeAssistant, client) -> None:
+    from custom_components.samsung_ehs.diagnostics import (
+        async_get_config_entry_diagnostics,
+    )
+
+    entry = await _setup(hass, {"room_sensor": "sensor.bedroom"})
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+    assert diag["entry"]["data"]["port"] == "**REDACTED**"
+    assert diag["entry"]["options"]["room_sensor"] == "**REDACTED**"
+    assert diag["entry"]["data"]["slave"] == 1
+
+
+async def test_second_entry_on_same_port_aborts(hass: HomeAssistant, client) -> None:
+    await _setup(hass)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {**DATA, "slave": 2, "hot_water": True}
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "port_in_use"
+
+
+async def test_reconfigure_onto_other_entrys_port_aborts(hass: HomeAssistant, client) -> None:
+    from homeassistant.config_entries import SOURCE_RECONFIGURE
+
+    await _setup(hass)
+    other = MockConfigEntry(domain=DOMAIN, data={**DATA, "port": "simulator"})
+    other.add_to_hass(hass)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_RECONFIGURE, "entry_id": other.entry_id}
+    )
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], DATA)
+    assert result["reason"] == "port_in_use"
+
+
+async def test_simulator_entry_is_titled(hass: HomeAssistant) -> None:
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {**DATA, "port": "simulator", "hot_water": True}
+    )
+    assert result["title"] == "Samsung EHS (simulator)"

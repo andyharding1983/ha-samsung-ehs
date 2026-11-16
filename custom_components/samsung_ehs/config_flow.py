@@ -71,6 +71,11 @@ RECONFIGURE_SCHEMA = vol.Schema(
 BY_ID_DIR = "/dev/serial/by-id"
 
 
+def _title(port: str) -> str:
+    """Make a simulated entry obvious wherever its name shows."""
+    return "Samsung EHS (simulator)" if port == SIM_PORT else "Samsung EHS"
+
+
 def stable_port(port: str) -> str:
     """Swap /dev/ttyUSBx style paths for their /dev/serial/by-id link.
 
@@ -103,6 +108,15 @@ class EhsConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    def _port_in_use(self, port: str, exclude: str | None = None) -> bool:
+        """One RS485 bus can only have one master: one entry per serial port."""
+        if port == SIM_PORT:
+            return False
+        return any(
+            e.data.get(CONF_PORT) == port and e.entry_id != exclude
+            for e in self._async_current_entries(include_ignore=False)
+        )
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -116,6 +130,8 @@ class EhsConfigFlow(ConfigFlow, domain=DOMAIN):
                 f"{user_input[CONF_INDOOR_INDEX]}"
             )
             self._abort_if_unique_id_configured()
+            if self._port_in_use(user_input[CONF_PORT]):
+                return self.async_abort(reason="port_in_use")
             try:
                 await _validate(user_input)
             except EhsConnectionError:
@@ -127,7 +143,7 @@ class EhsConfigFlow(ConfigFlow, domain=DOMAIN):
                 data = dict(user_input)
                 hot_water = data.pop(CONF_HOT_WATER)
                 return self.async_create_entry(
-                    title="Samsung EHS", data=data, options={CONF_HOT_WATER: hot_water}
+                    title=_title(data[CONF_PORT]), data=data, options={CONF_HOT_WATER: hot_water}
                 )
         return self.async_show_form(
             step_id="user",
@@ -145,6 +161,15 @@ class EhsConfigFlow(ConfigFlow, domain=DOMAIN):
             user_input[CONF_PORT] = await self.hass.async_add_executor_job(
                 stable_port, user_input[CONF_PORT].strip()
             )
+            unique_id = (
+                f"{user_input[CONF_PORT]}_{user_input[CONF_SLAVE]}_"
+                f"{user_input[CONF_INDOOR_INDEX]}"
+            )
+            if self._port_in_use(user_input[CONF_PORT], exclude=entry.entry_id) or any(
+                e.unique_id == unique_id and e.entry_id != entry.entry_id
+                for e in self._async_current_entries(include_ignore=False)
+            ):
+                return self.async_abort(reason="port_in_use")
             try:
                 await _validate(user_input)
             except EhsConnectionError:
@@ -155,8 +180,8 @@ class EhsConfigFlow(ConfigFlow, domain=DOMAIN):
             else:
                 return self.async_update_reload_and_abort(
                     entry,
-                    unique_id=f"{user_input[CONF_PORT]}_{user_input[CONF_SLAVE]}_"
-                    f"{user_input[CONF_INDOOR_INDEX]}",
+                    unique_id=unique_id,
+                    title=_title(user_input[CONF_PORT]),
                     data_updates=user_input,
                 )
         return self.async_show_form(

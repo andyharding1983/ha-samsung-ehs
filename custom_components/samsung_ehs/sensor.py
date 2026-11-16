@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -22,6 +23,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from . import EhsConfigEntry
 from .coordinator import EhsCoordinator
@@ -33,6 +35,12 @@ from .weather_comp import curve_points
 class EhsSensorDescription(SensorEntityDescription):
     value_fn: Callable[[EhsCoordinator], Any]
     attrs_fn: Callable[[EhsCoordinator], dict[str, Any] | None] | None = None
+    last_reset_fn: Callable[[EhsCoordinator], datetime | None] | None = None
+
+
+def _start_of_energy_day(c: EhsCoordinator) -> datetime | None:
+    day = c.energy.day
+    return dt_util.start_of_local_day(day) if day else None
 
 
 def _ext(key: str) -> Callable[[EhsCoordinator], Any]:
@@ -190,7 +198,10 @@ SENSORS: tuple[EhsSensorDescription, ...] = (
         key="heat_energy_today",
         device_class=SensorDeviceClass.ENERGY,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        state_class=SensorStateClass.TOTAL_INCREASING,
+        # Not TOTAL_INCREASING: defrost takes heat back, and a falling
+        # TOTAL_INCREASING value would be read as a meter reset.
+        state_class=SensorStateClass.TOTAL,
+        last_reset_fn=_start_of_energy_day,
         suggested_display_precision=2,
         value_fn=lambda c: round(c.energy.heat_today_kwh, 3),
     ),
@@ -280,6 +291,11 @@ class EhsSensor(EhsEntity, SensorEntity):
         if self.coordinator.data is None:
             return None
         return self.entity_description.value_fn(self.coordinator)
+
+    @property
+    def last_reset(self) -> datetime | None:
+        fn = self.entity_description.last_reset_fn
+        return fn(self.coordinator) if fn else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:

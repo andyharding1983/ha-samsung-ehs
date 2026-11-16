@@ -24,12 +24,12 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import EhsConfigEntry
-from .const import WC_ROOM_TARGET
+from .const import ROOM_TARGET_MAX, ROOM_TARGET_MIN, WC_ROOM_TARGET
 from .coordinator import EhsCoordinator
 from .entity import EhsEntity, temperature_compat
 
-MIN_ROOM = 5.0
-MAX_ROOM = 28.0
+MIN_ROOM = ROOM_TARGET_MIN
+MAX_ROOM = ROOM_TARGET_MAX
 
 
 async def async_setup_entry(
@@ -64,10 +64,14 @@ class EhsThermostat(EhsEntity, ClimateEntity, RestoreEntity):
         last = await self.async_get_last_state()
         if last is None:
             return
-        self.coordinator.heating_enabled = last.state != HVACMode.OFF
+        # Only trust a real saved mode; "unavailable"/"unknown" keeps the default.
+        if last.state in (HVACMode.HEAT, HVACMode.OFF):
+            self.coordinator.heating_enabled = last.state == HVACMode.HEAT
         temp = last.attributes.get(ATTR_TEMPERATURE)
         if temp is not None:
-            self.coordinator.wc_params[WC_ROOM_TARGET] = float(temp)
+            self.coordinator.wc_params[WC_ROOM_TARGET] = min(
+                max(float(temp), MIN_ROOM), MAX_ROOM
+            )
 
     @property
     def hvac_mode(self) -> HVACMode:
