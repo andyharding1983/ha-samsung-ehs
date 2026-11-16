@@ -270,6 +270,14 @@ views:
     - type: tile
       entity: sensor.samsung_ehs_heat_energy_today
       name: Heat out today
+    - type: tile
+      entity: sensor.samsung_ehs_flow_rate
+      name: Flow rate
+      icon: mdi:pump
+    - type: tile
+      entity: sensor.samsung_ehs_compressor_frequency
+      name: Compressor
+      icon: mdi:sine-wave
     - type: statistics-graph
       title: COP vs outdoor temperature, hourly
       grid_options:
