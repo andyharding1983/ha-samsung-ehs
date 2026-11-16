@@ -182,8 +182,9 @@ show how it was worked out:
 |---|---|
 | `effective_outdoor` | Outdoor temperature used by the curve: a blend of the current outdoor temperature and the forecast mean, weighted by *Forecast weight* (°C) |
 | `forecast_mean` | Mean forecast temperature over *Forecast look-ahead* hours (°C). `null` if no weather entity is configured or no forecast is available. |
+| `base_flow` | Flow temperature from the heating curve alone at the current outdoor temperature, before any adjustment (°C). `base_flow` + `forecast_offset` = `curve_flow`. |
 | `curve_flow` | Flow temperature from the heating curve alone at `effective_outdoor` (°C) |
-| `forecast_offset` | How much the forecast moved `curve_flow` compared with using the current outdoor temperature alone (K). Already included in `curve_flow`. |
+| `forecast_offset` | Forecast adjustment: how much the forecast moves the flow compared with using the current outdoor temperature alone (K). Already included in `curve_flow`. |
 | `adaptive_offset` | Learned correction applied at `effective_outdoor` (K), see *Learned curve offset* |
 | `room_offset` | Instant room correction = *Room influence gain* × (target − room), limited to ± *Room influence limit* (K) |
 | `wind_speed` | Wind used for the wind boost (m/s): the mean of the weather entity's current wind and the hourly forecast over *Forecast look-ahead*. `null` without a weather entity. |

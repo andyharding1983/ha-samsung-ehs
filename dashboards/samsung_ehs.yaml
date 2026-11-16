@@ -81,18 +81,18 @@ views:
         suffix: ' °C'
       - type: attribute
         entity: sensor.samsung_ehs_flow_target
-        attribute: effective_outdoor
-        name: Outdoor used by curve
-        icon: mdi:thermometer-check
-        suffix: ' °C'
-      - type: attribute
-        entity: sensor.samsung_ehs_flow_target
-        attribute: curve_flow
+        attribute: base_flow
         name: Heating curve
         icon: mdi:chart-bell-curve-cumulative
         suffix: ' °C'
       - type: section
         label: Adjustments
+      - type: attribute
+        entity: sensor.samsung_ehs_flow_target
+        attribute: forecast_offset
+        name: Forecast
+        icon: mdi:crystal-ball
+        suffix: ' K'
       - type: attribute
         entity: sensor.samsung_ehs_flow_target
         attribute: adaptive_offset

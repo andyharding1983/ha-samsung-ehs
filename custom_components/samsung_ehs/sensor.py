@@ -51,6 +51,7 @@ def _wc_attrs(c: EhsCoordinator) -> dict[str, Any] | None:
     if r is None:
         return None
     return {
+        "base_flow": round(r.curve_flow - r.forecast_offset, 2),
         "curve_flow": r.curve_flow,
         "adaptive_offset": r.curve_offset,
         "room_offset": r.room_offset,
