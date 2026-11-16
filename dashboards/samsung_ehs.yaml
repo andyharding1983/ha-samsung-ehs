@@ -9,7 +9,7 @@
 #
 # The heating curve chart needs ApexCharts card (HACS: "apexcharts-card"). Without it,
 # delete the card with "type: custom:apexcharts-card"; everything else uses built-in cards.
-# On a heating-only system, delete the "Hot water" section.
+# The "Hot water" section hides itself when hot water is turned off in the integration options.
 
 views:
 - title: Samsung EHS
@@ -167,6 +167,12 @@ views:
       - entity: sensor.samsung_ehs_learned_flow_at_mild_end
         name: Mild end
   - type: grid
+    visibility:
+    - condition: state
+      entity: water_heater.samsung_ehs_hot_water
+      state_not:
+      - unavailable
+      - unknown
     cards:
     - type: heading
       heading: Hot water

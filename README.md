@@ -66,7 +66,8 @@ for heating, weather compensation (with the curve chart and learning history), h
 2. Open its **Raw configuration editor** and paste the file in.
 
 The curve chart needs [ApexCharts card](https://github.com/RomRider/apexcharts-card). Everything else uses
-built-in cards. The file's header has the details.
+built-in cards. The hot water section hides itself when hot water is turned off in the options. The
+file's header has the details.
 
 ## Trying it without hardware
 
