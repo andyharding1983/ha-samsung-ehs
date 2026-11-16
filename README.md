@@ -73,6 +73,14 @@ A ready-made dashboard is in [`dashboards/samsung_ehs.yaml`](dashboards/samsung_
 for heating, weather compensation (with the curve chart and learning history), hot water, and performance
 (power, heat, COP).
 
+| Heating | Weather compensation |
+|:-:|:-:|
+| ![Heating section: thermostat with boost preset, flow and return, compressor and defrost, boost buttons](docs/images/heating.png) | ![Weather compensation breakdown: heating curve value plus forecast, learned, room and wind adjustments, giving the flow target](docs/images/weather-compensation.png) |
+| **Heating curve: set vs learned** | **Performance** |
+| ![ApexCharts plot of the set and learned heating curves, with the current flow target marked](docs/images/heating-curve.png) | ![Power in, heat out, COP now and today, daily energy, and an hourly COP vs outdoor temperature graph](docs/images/performance.png) |
+
+*Screenshots taken with the built-in simulator (see "Trying it without hardware"), so the values are illustrative.*
+
 1. Create a new dashboard from scratch.
 2. Open its **Raw configuration editor** and paste the file in.
 
