@@ -17,6 +17,21 @@
           "indoor_index": "0 for a single EHS unit.",
           "hot_water": "Turn off for heating-only systems. The hot water controls and sensors are then hidden."
         }
+      },
+      "reconfigure": {
+        "title": "Change connection",
+        "description": "Change the serial port or Modbus settings. Options and the learned curve are kept.",
+        "data": {
+          "port": "Serial port",
+          "slave": "Modbus address",
+          "baudrate": "Baud rate",
+          "indoor_index": "Indoor unit index"
+        },
+        "data_description": {
+          "port": "For example /dev/ttyUSB0 or /dev/serial/by-id/…, or 'simulator' to try it without hardware.",
+          "slave": "Set by the DIP and rotary switches on the MIM-B19N (1–247).",
+          "indoor_index": "0 for a single EHS unit."
+        }
       }
     },
     "error": {
@@ -24,7 +39,8 @@
       "unknown": "Unexpected error"
     },
     "abort": {
-      "already_configured": "This heat pump is already configured."
+      "already_configured": "This heat pump is already configured.",
+      "reconfigure_successful": "Connection updated."
     }
   },
   "options": {

@@ -73,6 +73,12 @@ Then open **Configure** on the integration to set:
 | Outdoor temperature sensor override | Use instead of the heat pump's own outdoor sensor |
 | Read extended registers | Outdoor temperature, flow rate and compressor frequency (see below) |
 
+### Switching from the simulator to the real unit
+
+Settings → Devices & services → Samsung EHS → ⋮ → **Reconfigure**. Enter the real serial port,
+preferably the `/dev/serial/by-id/…` path. The integration checks it can reach the MIM-B19N
+before saving. Your options and the learned curve are kept.
+
 ## Dashboard
 
 A ready-made dashboard is in [`dashboards/samsung_ehs.yaml`](dashboards/samsung_ehs.yaml). It has sections

@@ -468,3 +468,19 @@ async def test_register_dump_falls_back_to_single_reads() -> None:
     assert out["errors"].keys() == {3}
     assert out["registers"][4] == 4 and out["registers"][12] == 12
     assert 3 not in out["registers"]
+
+
+async def test_reconfigure_changes_port(hass: HomeAssistant, client) -> None:
+    from homeassistant.config_entries import SOURCE_RECONFIGURE
+
+    entry = await _setup(hass, {"hot_water": False})
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_RECONFIGURE, "entry_id": entry.entry_id}
+    )
+    assert result["step_id"] == "reconfigure"
+    new = {**DATA, "port": "/dev/serial/by-id/usb-test"}
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], new)
+    await hass.async_block_till_done()
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data["port"] == "/dev/serial/by-id/usb-test"
+    assert entry.options["hot_water"] is False

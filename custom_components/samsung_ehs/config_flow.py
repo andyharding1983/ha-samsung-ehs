@@ -61,6 +61,11 @@ USER_SCHEMA = vol.Schema(
     }
 )
 
+# Hot water is changed in the options flow instead.
+RECONFIGURE_SCHEMA = vol.Schema(
+    {k: v for k, v in USER_SCHEMA.schema.items() if str(k) != CONF_HOT_WATER}
+)
+
 
 async def _validate(data: dict[str, Any]) -> None:
     if data[CONF_PORT] == SIM_PORT:
@@ -105,6 +110,35 @@ class EhsConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=self.add_suggested_values_to_schema(USER_SCHEMA, user_input),
+            errors=errors,
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Change the connection (e.g. simulator -> real port) keeping options and learning."""
+        entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            try:
+                await _validate(user_input)
+            except EhsConnectionError:
+                errors["base"] = "cannot_connect"
+            except Exception:
+                _LOGGER.exception("Unexpected error")
+                errors["base"] = "unknown"
+            else:
+                return self.async_update_reload_and_abort(
+                    entry,
+                    unique_id=f"{user_input[CONF_PORT]}_{user_input[CONF_SLAVE]}_"
+                    f"{user_input[CONF_INDOOR_INDEX]}",
+                    data_updates=user_input,
+                )
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=self.add_suggested_values_to_schema(
+                RECONFIGURE_SCHEMA, user_input or entry.data
+            ),
             errors=errors,
         )
 
