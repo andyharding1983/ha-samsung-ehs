@@ -238,7 +238,8 @@ warms up. The same applies downwards at the *minimum*. It can always learn back 
 
 `sensor.samsung_ehs_learned_flow_at_cold_end` and `sensor.samsung_ehs_learned_flow_at_mild_end` (°C)
 show the two ends of the learned curve as ordinary temperature sensors, so they have a history graph.
-They have the same values as `learned_flow_at_design` and `learned_flow_at_mild` above.
+They have the same values as `learned_flow_at_design` and `learned_flow_at_mild` above. Like the flow
+target, they are held within *Minimum flow temperature* and *Maximum flow temperature*.
 
 - If both lines rise together, the curve is too low overall.
 - If only the cold end rises, the curve is too flat: it needs more heat as it gets colder.
@@ -249,6 +250,7 @@ They have the same values as `learned_flow_at_design` and `learned_flow_at_mild`
 | `outdoor_temperature` | Outdoor temperature at this end of the curve (°C) |
 | `set_flow` | The flow you set for this end (°C) |
 | `learned_offset` | What learning has added at this end (K) |
+| `unclamped_flow` | `set_flow` + `learned_offset` before the flow limits. Below the minimum means the learned curve reaches the minimum flow before this outdoor temperature. *Apply learned curve* stores this value, so the curve keeps its learned slope (°C) |
 
 ### Viewing the learned curve
 

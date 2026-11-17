@@ -85,11 +85,15 @@ def _adaptive_attrs(c: EhsCoordinator) -> dict[str, Any]:
     return {
         "design_end_offset": round(a.design, 2),
         "mild_end_offset": round(a.mild, 2),
-        "learned_flow_at_design": round(p["wc_flow_design"] + a.design, 1),
-        "learned_flow_at_mild": round(p["wc_flow_mild"] + a.mild, 1),
+        "learned_flow_at_design": _within_flow(p, p["wc_flow_design"] + a.design),
+        "learned_flow_at_mild": _within_flow(p, p["wc_flow_mild"] + a.mild),
         "design_weight": round(c.wc_result.design_weight, 2) if c.wc_result else None,
         "curve": curve_points(c.params(), a.design, a.mild),
     }
+
+
+def _within_flow(p: dict[str, float], flow: float) -> float:
+    return round(min(max(flow, p["wc_flow_min"]), p["wc_flow_max"]), 1)
 
 
 def _learned_end(
@@ -101,14 +105,19 @@ def _learned_end(
         else ("wc_flow_mild", "wc_outdoor_mild")
     )
 
+    def raw(c: EhsCoordinator) -> float:
+        return c.wc_params[flow_key] + getattr(c.adaptive, end)
+
     def value(c: EhsCoordinator) -> float:
-        return round(c.wc_params[flow_key] + getattr(c.adaptive, end), 1)
+        # The flow actually used there: the curve is held within the flow limits.
+        return _within_flow(c.wc_params, raw(c))
 
     def attrs(c: EhsCoordinator) -> dict[str, Any]:
         return {
             "outdoor_temperature": c.wc_params[out_key],
             "set_flow": c.wc_params[flow_key],
             "learned_offset": round(getattr(c.adaptive, end), 2),
+            "unclamped_flow": round(raw(c), 1),
         }
 
     return value, attrs

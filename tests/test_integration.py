@@ -798,3 +798,18 @@ async def test_simulator_entry_is_titled(hass: HomeAssistant) -> None:
         result["flow_id"], {**DATA, "port": "simulator", "hot_water": True}
     )
     assert result["title"] == "Samsung EHS (simulator)"
+
+
+async def test_learned_end_held_within_flow_limits(hass: HomeAssistant, client) -> None:
+    await _setup(hass)
+    c = hass.config_entries.async_entries(DOMAIN)[0].runtime_data
+    c.wc_params["wc_flow_mild"] = 25.0
+    c.wc_params["wc_flow_min"] = 25.0
+    c.adaptive.mild = -1.54
+    c.async_update_listeners()
+    await hass.async_block_till_done()
+    mild = hass.states.get("sensor.samsung_ehs_learned_flow_at_mild_end")
+    assert float(mild.state) == 25.0
+    assert mild.attributes["unclamped_flow"] == 23.5
+    offset = hass.states.get("sensor.samsung_ehs_learned_curve_offset")
+    assert offset.attributes["learned_flow_at_mild"] == 25.0
