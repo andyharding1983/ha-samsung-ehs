@@ -9,6 +9,34 @@ Samsung's **MIM-B19N** Modbus interface module, with Home Assistant-side
 
 No cloud, no SmartThings.
 
+## New to this? Start here
+
+**What is it?** A free add-on that lets you run a Samsung EHS heat pump from
+[Home Assistant](https://www.home-assistant.io/). Home Assistant is free, open-source software
+for running your home. It runs on a small box in your house (for example a
+[Home Assistant Green](https://www.home-assistant.io/green/) or a Raspberry Pi), and you use it
+from a phone app or a web browser.
+
+**What does it do?** It works as a smart thermostat for your heat pump. It sets the water
+temperature from the outdoor temperature, the weather forecast and how warm your rooms actually
+are. It learns how your house behaves, and it shows how efficiently the heat pump is running
+(its COP). The aim is a steady, comfortable house that uses less electricity.
+
+**Why local?** Everything runs inside your house. Nothing goes through Samsung's SmartThings
+cloud or anyone else's servers, so it doesn't stop working, and doesn't cost more, if a cloud
+service changes its rules or starts charging. It keeps working if your internet goes down.
+There are no subscriptions.
+
+**What do I need?**
+1. A Home Assistant box (see above).
+2. A Samsung **MIM-B19N** interface module, fitted to the heat pump by your installer. This is
+   Samsung's own add-on for connecting other systems, so it's the safe, warranty-friendly route.
+3. A **USB–RS485 adapter** (a few pounds) and a cable from the MIM-B19N to the Home Assistant box.
+
+If you're new to Home Assistant, get it set up first using the
+[official getting started guide](https://www.home-assistant.io/getting-started/). Then come back
+here and follow [Installation](#installation).
+
 > **Uses Samsung's official interface only.** All communication goes through the Samsung
 > MIM-B19N module's documented Modbus interface. Nothing is connected directly to the
 > F1/F2 communication bus, and the heat pump's wiring and firmware are not modified. This
