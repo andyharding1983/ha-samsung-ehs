@@ -111,3 +111,32 @@ def test_adaptive_anti_windup():
     assert a.design == -1.0
     a.update(3600, 22.0, 21.0, w_design=1.0, learning=True, limited=-1)
     assert a.design == -1.0
+
+
+def test_outdoor_filter_averages_over_window():
+    f = C.OutdoorFilter(window_s=30 * MIN)
+    assert f.update(0, 2.0, False) == 2.0
+    assert f.update(10 * MIN, 4.0, False) == 3.0
+    # The 0 min sample has aged out after 30 min.
+    assert f.update(35 * MIN, 6.0, False) == 5.0
+
+
+def test_outdoor_filter_skips_defrost_and_holdoff():
+    f = C.OutdoorFilter(window_s=30 * MIN, holdoff_s=10 * MIN)
+    f.update(0, 1.0, False)
+    assert f.update(1 * MIN, 4.8, True) == 1.0  # defrost spike ignored
+    assert f.update(6 * MIN, 2.2, False) == 1.0  # settling after defrost
+    assert f.update(15 * MIN, 1.2, False) == 1.0  # still inside the hold-off
+    assert f.update(17 * MIN, 1.2, False) == 1.1  # counted again
+
+
+def test_outdoor_filter_keeps_last_value_through_long_defrost():
+    f = C.OutdoorFilter(window_s=30 * MIN)
+    f.update(0, 1.0, False)
+    assert f.update(45 * MIN, 5.0, True) == 1.0
+
+
+def test_outdoor_filter_falls_back_to_raw_when_empty():
+    f = C.OutdoorFilter()
+    assert f.update(0, 4.0, True) == 4.0
+    assert f.update(1, None, False) is None

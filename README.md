@@ -119,6 +119,7 @@ Set a room target and Home Assistant does the rest. Turn off the Samsung control
 ### Weather-compensated flow temperature
 
 ```
+outdoor_now       = 30 min rolling mean of the outdoor sensor, skipping defrosts and the 10 min after
 effective_outdoor = (1 − w) · outdoor_now + w · mean(forecast over next N hours)
 curve_flow        = straight line through (design outdoor, design flow) and (mild outdoor, mild flow)
 room_offset       = clamp(gain · (room_target − room_temp), ±limit)

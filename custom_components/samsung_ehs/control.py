@@ -17,6 +17,7 @@ target across the whole range of outdoor temperatures.
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
@@ -153,3 +154,37 @@ class StartCounter:
         if data.get("last_start"):
             out.last_start = datetime.fromisoformat(data["last_start"])
         return out
+
+
+@dataclass
+class OutdoorFilter:
+    """Rolling mean of the outdoor temperature, ignoring defrosts.
+
+    The unit's outdoor sensor sits by the coil and reads 2-3 K high during
+    a defrost and for a few minutes after. Those samples are skipped, and
+    the rest are averaged over `window_s`, so the curve doesn't jump about.
+    """
+
+    window_s: float = 1800.0
+    holdoff_s: float = 600.0
+    _samples: deque[tuple[float, float]] = field(default_factory=deque)
+    _defrost_end: float | None = None
+    _defrosting: bool = False
+
+    def update(self, now: float, value: float | None, defrost: bool) -> float | None:
+        if defrost:
+            self._defrosting = True
+        elif self._defrosting:
+            self._defrosting = False
+            self._defrost_end = now
+        settling = self._defrost_end is not None and now - self._defrost_end < self.holdoff_s
+        if value is not None and not self._defrosting and not settling:
+            self._samples.append((now, value))
+        while self._samples and now - self._samples[0][0] > self.window_s:
+            # Keep the newest sample so a long defrost still has a value.
+            if len(self._samples) == 1:
+                break
+            self._samples.popleft()
+        if not self._samples:
+            return value
+        return round(sum(v for _, v in self._samples) / len(self._samples), 2)

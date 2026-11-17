@@ -54,7 +54,7 @@ from .const import (
     ROOM_TARGET_MAX,
     ROOM_TARGET_MIN,
 )
-from .control import AdaptiveCurve, StartCounter, Thermostat
+from .control import AdaptiveCurve, OutdoorFilter, StartCounter, Thermostat
 from .cop import EnergyTracker, heat_output_w, instant_cop
 from .weather_comp import WcParams, WcResult, compute, round_half
 
@@ -152,6 +152,8 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         self.wc_last_write: datetime | None = None
         self.thermostat = Thermostat()
         self.adaptive = AdaptiveCurve()
+        self.outdoor_filter = OutdoorFilter()
+        self.outdoor_smoothed: float | None = None
         self._thermostat_synced = False
         # Set once entities have restored target/params, so we never act
         # on defaults right after a restart.
@@ -598,7 +600,8 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
             limited=prev.limited if prev else 0,
         )
 
-        outdoor = self.outdoor_temp()
+        outdoor = self.outdoor_filter.update(now, self.outdoor_temp(), data.defrost)
+        self.outdoor_smoothed = outdoor
         result: WcResult | None = None
         if outdoor is not None:
             await self._async_refresh_forecast()

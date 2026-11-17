@@ -67,6 +67,7 @@ def _wc_attrs(c: EhsCoordinator) -> dict[str, Any] | None:
         "boost_offset": round(c.boost_flow - r.flow_target, 2) if c.boost_active else 0.0,
         "forecast_offset": r.forecast_offset,
         "wind_speed": r.wind_speed,
+        "outdoor_smoothed": c.outdoor_smoothed,
         "effective_outdoor": r.effective_outdoor,
         "forecast_mean": r.forecast_mean,
         "limited": r.limited,

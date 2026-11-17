@@ -180,7 +180,8 @@ show how it was worked out:
 
 | Attribute | Meaning |
 |---|---|
-| `effective_outdoor` | Outdoor temperature used by the curve: a blend of the current outdoor temperature and the forecast mean, weighted by *Forecast weight* (°C) |
+| `outdoor_smoothed` | 30 min rolling mean of the outdoor temperature. Readings during a defrost and for 10 min after are skipped, because the coil sensor reads high then (°C) |
+| `effective_outdoor` | Outdoor temperature used by the curve: a blend of `outdoor_smoothed` and the forecast mean, weighted by *Forecast weight* (°C) |
 | `forecast_mean` | Mean forecast temperature over *Forecast look-ahead* hours (°C). `null` if no weather entity is configured or no forecast is available. |
 | `base_flow` | Flow temperature from the heating curve alone at the current outdoor temperature, before any adjustment (°C). `base_flow` + `forecast_offset` = `curve_flow`. |
 | `curve_flow` | Flow temperature from the heating curve alone at `effective_outdoor` (°C) |
