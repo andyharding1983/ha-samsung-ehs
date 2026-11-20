@@ -89,9 +89,9 @@ class EhsThermostat(EhsEntity, ClimateEntity, RestoreEntity):
             return HVACAction.IDLE  # paused: room reached target + hysteresis
         if d.defrost:
             return HVACAction.DEFROSTING
-        if (d.extended or {}).get("compressor_freq"):
-            return HVACAction.HEATING
-        return HVACAction.IDLE
+        # Heating is called for. The unit may still stop its compressor between
+        # runs when it can't modulate low enough; that shows on Compressor running.
+        return HVACAction.HEATING
 
     @property
     def native_current_temperature(self) -> float | None:

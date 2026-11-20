@@ -10,5 +10,5 @@
   "issue_tracker": "https://github.com/andyharding1983/ha-samsung-ehs/issues",
   "loggers": ["custom_components.samsung_ehs", "pymodbus"],
   "requirements": ["pymodbus>=3.6.0"],
-  "version": "0.2.3"
+  "version": "0.2.4"
 }

@@ -84,8 +84,8 @@ the Samsung controller's own sensor.
 
 | HVAC action | Meaning |
 |---|---|
-| `heating` | Space heating on and compressor running |
-| `idle` | Heat mode, but paused (room ≥ target + overshoot, or above the heating cut-off), or on with the compressor not running |
+| `heating` | The thermostat is calling for heat. The unit can still stop its compressor between runs when the house needs less than its lowest output; *Compressor running* shows that. |
+| `idle` | Heat mode, but the thermostat has paused heating (room ≥ target + overshoot, or above the heating cut-off) |
 | `defrosting` | Outdoor unit is defrosting |
 | `off` | Mode is Off |
 

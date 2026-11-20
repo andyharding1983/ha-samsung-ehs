@@ -813,3 +813,14 @@ async def test_learned_end_held_within_flow_limits(hass: HomeAssistant, client) 
     assert mild.attributes["unclamped_flow"] == 23.5
     offset = hass.states.get("sensor.samsung_ehs_learned_curve_offset")
     assert offset.attributes["learned_flow_at_mild"] == 25.0
+
+
+async def test_hvac_action_follows_thermostat_not_compressor(hass: HomeAssistant, client) -> None:
+    await _setup(hass)
+    c = hass.config_entries.async_entries(DOMAIN)[0].runtime_data
+    assert hass.states.get("climate.samsung_ehs").attributes["hvac_action"] == "heating"
+    # Unit cycles its compressor off while heating is still called for.
+    c.data.extended["compressor_freq"] = 0
+    c.async_update_listeners()
+    await hass.async_block_till_done()
+    assert hass.states.get("climate.samsung_ehs").attributes["hvac_action"] == "heating"
