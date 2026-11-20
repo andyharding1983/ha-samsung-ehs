@@ -140,3 +140,12 @@ def test_outdoor_filter_falls_back_to_raw_when_empty():
     f = C.OutdoorFilter()
     assert f.update(0, 4.0, True) == 4.0
     assert f.update(1, None, False) is None
+
+
+def test_rolling_mean_window_and_reset():
+    m = C.RollingMean(window_s=30 * MIN)
+    assert m.update(0, 31.6) == 31.6
+    assert m.update(5 * MIN, 32.2) == 31.9
+    assert m.update(40 * MIN, 33.0) == 33.0  # older samples aged out
+    m.reset()
+    assert m.update(41 * MIN, 30.0) == 30.0

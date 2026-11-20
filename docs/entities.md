@@ -39,9 +39,12 @@ On every poll (15 s by default) Home Assistant:
 4. **Runs the thermostat:** it pauses at *target + overshoot* and resumes once the room has dropped
    *restart drop* below that point (target + 0.5 °C by default), subject to the minimum on/off times.
 5. **Switches space heating** on or off at the unit if the thermostat state changed.
-6. **Writes the Flow target** to the unit as the **Flow setpoint**, but only if heating is on, the change is
-   at least 0.5 °C, and the last write was at least 5 min ago. Changing the room target or a tuning
-   number writes straight away.
+6. **Writes the Flow target** to the unit as the **Flow setpoint**, but only if heating is on, the
+   30 min average flow target (`flow_average`) is at least 0.75 °C away from the current setpoint, and
+   the last write was at least 5 min ago. Averaging stops a 0.1 °C flicker on the room sensor from
+   nudging the setpoint up and down; the 0.75 °C gap stops it flipping between two 0.5 °C steps.
+   Changing the room target or a tuning number, a mode change and the end of a boost restart the
+   average and write straight away.
 
 ### Flow target vs flow setpoint
 
@@ -180,6 +183,7 @@ show how it was worked out:
 
 | Attribute | Meaning |
 |---|---|
+| `flow_average` | 30 min rolling mean of the calculated flow, before rounding. The state is this rounded to 0.5 °C. The setpoint is only rewritten when this is 0.75 °C or more away from it, so the two can differ by up to 0.5 °C at rest (°C) |
 | `outdoor_smoothed` | 30 min rolling mean of the outdoor temperature. Readings during a defrost and for 10 min after are skipped, because the coil sensor reads high then (°C) |
 | `effective_outdoor` | Outdoor temperature used by the curve: a blend of `outdoor_smoothed` and the forecast mean, weighted by *Forecast weight* (°C) |
 | `forecast_mean` | Mean forecast temperature over *Forecast look-ahead* hours (°C). `null` if no weather entity is configured or no forecast is available. |

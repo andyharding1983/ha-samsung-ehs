@@ -60,6 +60,7 @@ class WcResult:
     wind_offset: float = 0.0  # K added for wind
     wind_speed: float | None = None  # m/s used for wind_offset
     forecast_offset: float = 0.0  # K the forecast moved the curve flow
+    flow_raw: float | None = None  # flow before rounding to 0.5 K
 
 
 WIND_MAX_OFFSET = 3.0  # K
@@ -195,4 +196,5 @@ def compute(
         wind_offset=w_off,
         wind_speed=wind,
         forecast_offset=fc_off,
+        flow_raw=round(flow, 2),
     )

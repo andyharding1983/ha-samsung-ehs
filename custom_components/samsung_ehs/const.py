@@ -110,4 +110,5 @@ BOOST_DURATION_S = 3600
 
 # Minimum change (K) before a new flow setpoint is written to the unit,
 # to avoid hammering the bus/EEPROM with tiny adjustments.
-WC_WRITE_DEADBAND = 0.5
+WC_WRITE_DEADBAND = 0.75  # K between the averaged flow target and the unit's setpoint
+FLOW_AVERAGE_S = 1800  # flow target is a 30 min rolling mean

@@ -824,3 +824,25 @@ async def test_hvac_action_follows_thermostat_not_compressor(hass: HomeAssistant
     c.async_update_listeners()
     await hass.async_block_till_done()
     assert hass.states.get("climate.samsung_ehs").attributes["hvac_action"] == "heating"
+
+
+async def test_flow_write_hysteresis(hass: HomeAssistant, client) -> None:
+    await _setup(hass)
+    c = hass.config_entries.async_entries(DOMAIN)[0].runtime_data
+    c.wc_interval = timedelta(0)
+    c._last_flow_write = None
+    data = c.data
+    data.water_out_set = 31.5
+    client.write_indoor.reset_mock()
+    # Average flickering around a 0.5 K boundary: no writes.
+    for avg in (31.74, 31.8, 31.7, 32.2):
+        await c._async_write_flow(32.0, data, 0.0, False, avg)
+    assert not any(call.args[0] == R.IU_WATER_OUT_SET for call in client.write_indoor.await_args_list)
+    # A clear move (>= 0.75 K) is written.
+    await c._async_write_flow(32.5, data, 0.0, False, 32.3)
+    client.write_indoor.assert_any_await(R.IU_WATER_OUT_SET, R.encode_temp(32.5))
+    assert data.water_out_set == 32.5
+    # Forced writes (settings changed) go straight through.
+    client.write_indoor.reset_mock()
+    await c._async_write_flow(33.0, data, 0.0, True, 32.6)
+    client.write_indoor.assert_any_await(R.IU_WATER_OUT_SET, R.encode_temp(33.0))

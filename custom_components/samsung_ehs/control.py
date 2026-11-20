@@ -188,3 +188,20 @@ class OutdoorFilter:
         if not self._samples:
             return value
         return round(sum(v for _, v in self._samples) / len(self._samples), 2)
+
+
+@dataclass
+class RollingMean:
+    """Mean of the samples from the last `window_s` seconds."""
+
+    window_s: float = 1800.0
+    _samples: deque[tuple[float, float]] = field(default_factory=deque)
+
+    def update(self, now: float, value: float) -> float:
+        self._samples.append((now, value))
+        while now - self._samples[0][0] > self.window_s:
+            self._samples.popleft()
+        return round(sum(v for _, v in self._samples) / len(self._samples), 2)
+
+    def reset(self) -> None:
+        self._samples.clear()

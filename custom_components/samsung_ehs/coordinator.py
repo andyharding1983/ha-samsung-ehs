@@ -49,12 +49,13 @@ from .const import (
     WC_MIN_ON,
     WC_ROOM_TARGET,
     WC_WRITE_DEADBAND,
+    FLOW_AVERAGE_S,
     FLOW_DESIGN_LIMITS,
     FLOW_MILD_LIMITS,
     ROOM_TARGET_MAX,
     ROOM_TARGET_MIN,
 )
-from .control import AdaptiveCurve, OutdoorFilter, StartCounter, Thermostat
+from .control import AdaptiveCurve, OutdoorFilter, RollingMean, StartCounter, Thermostat
 from .cop import EnergyTracker, heat_output_w, instant_cop
 from .weather_comp import WcParams, WcResult, compute, round_half
 
@@ -154,6 +155,8 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         self.adaptive = AdaptiveCurve()
         self.outdoor_filter = OutdoorFilter()
         self.outdoor_smoothed: float | None = None
+        self.flow_filter = RollingMean(FLOW_AVERAGE_S)
+        self.flow_average: float | None = None
         self._thermostat_synced = False
         # Set once entities have restored target/params, so we never act
         # on defaults right after a restart.
@@ -617,6 +620,17 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
                 offset_mild=self.adaptive.mild,
                 wind=self.wind_speed(p.forecast_hours),
             )
+        if result is not None and result.heating_needed and result.flow_raw is not None:
+            # Average out sensor flicker (a 0.12 K room step is 0.6 K of flow),
+            # so the setpoint isn't nudged back and forth. A forced update (new
+            # settings, mode change, boost end) starts the average afresh.
+            if force_flow:
+                self.flow_filter.reset()
+            self.flow_average = self.flow_filter.update(now, result.flow_raw)
+            result = replace(result, flow_target=round_half(self.flow_average))
+        else:
+            self.flow_filter.reset()
+            self.flow_average = None
         self.wc_result = result
         heating_needed = result.heating_needed if result else True
 
@@ -634,7 +648,9 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
         if boosting:
             await self._async_write_flow(self.boost_flow, data, now, force_flow)
         elif want_on and result is not None:
-            await self._async_write_flow(result.flow_target, data, now, force_flow)
+            await self._async_write_flow(
+                result.flow_target, data, now, force_flow, self.flow_average
+            )
 
         self.async_update_listeners()
 
@@ -654,11 +670,22 @@ class EhsCoordinator(DataUpdateCoordinator[R.EhsData]):
             _LOGGER.warning("Could not switch space heating: %s", err)
 
     async def _async_write_flow(
-        self, target: float, data: R.EhsData, now: float, force: bool
+        self,
+        target: float,
+        data: R.EhsData,
+        now: float,
+        force: bool,
+        average: float | None = None,
     ) -> None:
         current = data.water_out_set
-        if current is not None and abs(target - current) < WC_WRITE_DEADBAND:
-            return
+        if current is not None:
+            if force or average is None:
+                if target == current:
+                    return
+            elif abs(average - current) < WC_WRITE_DEADBAND:
+                # Hysteresis: the average must move clearly away from the
+                # setpoint, so it can't flip between two 0.5 K steps.
+                return
         interval = self.wc_interval.total_seconds()
         if (
             not force
